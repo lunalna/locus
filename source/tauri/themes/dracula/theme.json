@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "dracula",
+  "name": "Dracula",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#282A36",
+  "foreground": "#F8F8F2",
+  "colors": {
+    "primary-100": "#37344A",
+    "primary-200": "#494161",
+    "primary-300": "#675688",
+    "primary-400": "#8D71BB",
+    "primary-500": "#A884DE",
+    "primary-600": "#BD93F9",
+    "primary-700": "#D1B3FB",
+    "primary-800": "#E5D4FD",
+    "primary-900": "#F8F4FE",
+    "highlight": "#BD93F9",
+    "highlight-light": "#494161"
+  }
+}

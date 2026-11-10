@@ -1,0 +1,554 @@
+/*
+ * GeoGebra - Dynamic Mathematics for Everyone
+ * Copyright (c) GeoGebra GmbH, Altenbergerstr. 69, 4040 Linz, Austria
+ * https://www.geogebra.org
+ *
+ * This file is licensed by GeoGebra GmbH under the EUPL 1.2 licence and
+ * may be used under the EUPL 1.2 in compatible projects (see Article 5
+ * and the Appendix of EUPL 1.2 for details).
+ * You may obtain a copy of the licence at:
+ * https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+ *
+ * Note: The overall GeoGebra software package is free to use for
+ * non-commercial purposes only.
+ * See https://www.geogebra.org/license for full licensing details
+ */
+
+package org.geogebra.common.euclidian;
+
+import static org.geogebra.test.TestStringUtil.unicode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+
+import org.geogebra.common.jre.headless.AppCommon;
+import org.geogebra.common.kernel.Construction;
+import org.geogebra.common.kernel.Kernel;
+import org.geogebra.common.kernel.geos.GeoElement;
+import org.geogebra.common.kernel.geos.GeoInline;
+import org.geogebra.common.kernel.geos.GeoInlineText;
+import org.geogebra.common.kernel.geos.GeoStickyNote;
+import org.geogebra.common.main.GeoGebraColorConstants;
+import org.geogebra.common.plugin.EuclidianStyleConstants;
+import org.geogebra.test.TestEvent;
+import org.geogebra.test.annotation.Issue;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+@SuppressWarnings("javadoc")
+class EuclidianControllerTest extends BaseEuclidianControllerTest {
+	private static final ArrayList<TestEvent> events = new ArrayList<>();
+	private static String[] lastCheck;
+	private static boolean lastVisibility;
+
+	private void t(String s) {
+		TestEvent evt = new TestEvent(0, 0);
+		evt.setCommand(s);
+		events.add(evt);
+		add(s);
+	}
+
+	@BeforeEach
+	void setUp() {
+		setUpController();
+		events.clear();
+		getApp().setAppletFlag(false);
+		getApp()
+				.getSettings()
+				.getEuclidian(1)
+				.setPointCapturing(EuclidianStyleConstants.POINT_CAPTURING_AUTOMATIC);
+	}
+
+	/**
+	 * Repeat last test with dragging.
+	 */
+	@AfterEach
+	void repeatWithDrag() {
+		AppCommon app = getApp();
+		if (!events.isEmpty()) {
+			reset();
+			for (TestEvent evt : events) {
+				if (evt.getInputs() != null) {
+					app.initDialogManager(false, evt.getInputs());
+				} else if (evt.getCommand() != null) {
+					app.getKernel().getAlgebraProcessor().processAlgebraCommand(evt.getCommand(), false);
+				} else {
+					resetMouseLocation();
+					app.getActiveEuclidianView().getEuclidianController().wrapMouseMoved(evt);
+					app.getActiveEuclidianView().getEuclidianController().wrapMousePressed(evt);
+					app.getActiveEuclidianView().getEuclidianController().wrapMouseReleased(evt);
+				}
+			}
+
+			checkContentWithVisibility(lastVisibility, lastCheck);
+		}
+	}
+
+	@Test
+	void deleteTool() {
+		setMode(EuclidianConstants.MODE_DELETE);
+		t("a:x=1");
+		t("b:y=-1");
+		click(50, 50);
+		checkContent("a: x = 1");
+		resetMouseLocation();
+		click(50, 50);
+		checkContent();
+	}
+
+	@Test
+	void relationTool() {
+		setMode(EuclidianConstants.MODE_RELATION); // TODO 14
+	}
+
+	@Test
+	void textTool() {
+		setMode(EuclidianConstants.MODE_TEXT); // TODO 17
+	}
+
+	@Test
+	void imageTool() {
+		setMode(EuclidianConstants.MODE_IMAGE); // TODO 26
+	}
+
+	@Test
+	void mirrorAtPointTool() {
+		setMode(EuclidianConstants.MODE_MIRROR_AT_POINT);
+		click(0, 0); // A
+		click(100, 100); // reflection point B, reflected point A'
+		String circle = "c: x^2 + y^2 = 25"; // c: circle of radius 5 around origin
+		t(circle);
+		click(150, 200); // point on circle D
+		click(100, 100); // reflection point E
+		checkContent(
+				"A = (0, 0)",
+				"B = (2, -2)",
+				"A' = (4, -4)",
+				unicode(circle),
+				unicode("c': x^2 + y^2 - 8x + 8y = -7"));
+	}
+
+	@Test
+	void mirrorAtLineTool() {
+		setMode(EuclidianConstants.MODE_MIRROR_AT_LINE);
+		String line = "f: x - y = 4";
+		t(line);
+		click(0, 0);
+		click(100, 100);
+		String circle = "c: x^2 + y^2 = 25";
+		t(circle);
+		click(150, 200);
+		click(100, 100);
+		checkContent(
+				line,
+				"A = (0, 0)",
+				"A' = (4, -4)",
+				unicode(circle),
+				unicode("c': x^2 + y^2 - 8x + 8y = -7"));
+	}
+
+	@Test
+	void translateByVectorTool() {
+		setMode(EuclidianConstants.MODE_TRANSLATE_BY_VECTOR); // TODO 31
+	}
+
+	@Test
+	@Issue("APPS-5351")
+	void rotateByAngleToolMultiplePointsToExistingPoint() {
+		setMode(EuclidianConstants.MODE_ROTATE_BY_ANGLE);
+		t("A = (1, -1)");
+		t("B = (2, -1)");
+		t("C = (2, -2)");
+		dragStart(25, 25);
+		dragEnd(125, 75);
+		prepareInput("180deg");
+		click(100, 100);
+		checkContent("A = (1, -1)", "B = (2, -1)", "C = (2, -2)", "A' = (3, -3)", "B' = (2, -3)");
+		events.clear();
+	}
+
+	@Test
+	void rotateByAngleToolPointToExistingPoint() {
+		setMode(EuclidianConstants.MODE_ROTATE_BY_ANGLE);
+		t("A = (1, -1)");
+		t("B = (2, -2)");
+		click(50, 50);
+		prepareInput("180deg");
+		click(100, 100);
+		checkContent("A = (1, -1)", "B = (2, -2)", "A' = (3, -3)");
+		events.clear();
+	}
+
+	@Test
+	@Issue("APPS-5351")
+	void rotateByAngleToolMultiplePointsToNewPoint() {
+		setMode(EuclidianConstants.MODE_ROTATE_BY_ANGLE);
+		t("A = (1, -1)");
+		t("B = (3, -2)");
+		dragStart(25, 25);
+		dragEnd(175, 125);
+		prepareInput("270deg");
+		click(150, 150);
+		checkContent("A = (1, -1)", "B = (3, -2)", "C = (3, -3)", "A' = (1, -5)", "B' = (2, -3)");
+		events.clear();
+	}
+
+	@Test
+	@Issue("APPS-5351")
+	void rotateByAngleToolObjectToExistingPoint() {
+		setMode(EuclidianConstants.MODE_ROTATE_BY_ANGLE);
+		t("t1 = Polygon((1,-1),(2,-2),(1,-2))");
+		t("A = (3, -3)");
+		click(60, 80);
+		prepareInput("270deg");
+		click(150, 150);
+		checkContent("t1 = 0.5", "f = 1.41421", "g = 1", "h = 1", "A = (3, -3)", "t1' = 0.5");
+		events.clear();
+	}
+
+	@Test
+	@Issue("APPS-5351")
+	void rotateByAngleToolMultipleObjectsToNewPoint() {
+		setMode(EuclidianConstants.MODE_ROTATE_BY_ANGLE);
+		t("c = Circle((1, -1), 0.5)");
+		t("d = Circle((3, -1), 0.5)");
+		t("A = (2, -2)");
+		dragStart(10, 10);
+		dragEnd(190, 80);
+		prepareInput("180deg");
+		click(100, 100);
+		checkContent(
+				"c: (x - 1)² + (y + 1)² = 0.25",
+				"d: (x - 3)² + (y + 1)² = 0.25",
+				"A = (2, -2)",
+				"c': (x - 3)² + (y + 3)² = 0.25",
+				"d': (x - 1)² + (y + 3)² = 0.25");
+		events.clear();
+	}
+
+	@Test
+	void dilateFromPointTool() {
+		setMode(EuclidianConstants.MODE_DILATE_FROM_POINT); // TODO 33
+	}
+
+	@Test
+	void selectionListenerTool() {
+		setMode(EuclidianConstants.MODE_SELECTION_LISTENER); // TODO 43
+	}
+
+	@Test
+	void regularPolygonTool() {
+		setMode(EuclidianConstants.MODE_REGULAR_POLYGON);
+		prepareInput("4");
+		click(100, 100);
+		click(0, 0);
+		checkContent(
+				"A = (2, -2)",
+				"B = (0, 0)",
+				"poly1 = 8",
+				"f = 2.82843",
+				"g = 2.82843",
+				"C = (-2, -2)",
+				"D = (0, -4)",
+				"h = 2.82843",
+				"i = 2.82843");
+	}
+
+	private void prepareInput(String... string) {
+		getApp().initDialogManager(false, string);
+		events.add(new TestEvent(0, 0).withInput(string));
+	}
+
+	@Test
+	void showCheckBoxTool() {
+		setMode(EuclidianConstants.MODE_SHOW_HIDE_CHECKBOX); // TODO 52
+	}
+
+	@Test
+	void mirrorAtCircleTool() {
+		t("c:x^2+y^2=8");
+		t("A=(1, -1)");
+		setMode(EuclidianConstants.MODE_MIRROR_AT_CIRCLE);
+		click(50, 50);
+		click(100, 100);
+
+		checkContent(unicode("c: x^2 + y^2 = 8"), "A = (1, -1)", "A' = (4, -4)");
+	}
+
+	@Test
+	void buttonActionTool() {
+		setMode(EuclidianConstants.MODE_BUTTON_ACTION); // TODO 60
+	}
+
+	@Test
+	void textFieldActionTool() {
+		setMode(EuclidianConstants.MODE_TEXTFIELD_ACTION); // TODO 61
+	}
+
+	@Test
+	void penTool() {
+		setMode(EuclidianConstants.MODE_PEN);
+		dragStart(0, 0);
+		dragEnd(50, 50);
+		checkContent("stroke1");
+		assertEquals(GeoGebraColorConstants.NEUTRAL_900, lookup("stroke1").getObjectColor());
+	}
+
+	@Test
+	void penToolNotes() {
+		getApp().setNotesConfig();
+		getApp().getSettings().resetSettings(getApp());
+		setMode(EuclidianConstants.MODE_PEN);
+		dragStart(0, 0);
+		dragEnd(50, 50);
+		assertEquals(GeoGebraColorConstants.NEUTRAL_900, lookup("stroke1").getObjectColor());
+	}
+
+	@Test
+	void rigidPolygonTool() {
+		setMode(EuclidianConstants.MODE_RIGID_POLYGON); // TODO 64
+	}
+
+	@Test
+	void probabilityCalculatorTool() {
+		setMode(EuclidianConstants.MODE_PROBABILITY_CALCULATOR); // TODO 66
+	}
+
+	@Test
+	void functionInspectorTool() {
+		setMode(EuclidianConstants.MODE_FUNCTION_INSPECTOR); // TODO 68
+	}
+
+	@Test
+	void vectorPolygonTool() {
+		setMode(EuclidianConstants.MODE_VECTOR_POLYGON); // TODO 70
+	}
+
+	@Test
+	void freehandShapeTool() {
+		setMode(EuclidianConstants.MODE_FREEHAND_SHAPE); // TODO 73
+	}
+
+	@Test
+	void selectTool() {
+		setMode(EuclidianConstants.MODE_SELECT); // TODO 77
+	}
+
+	@Test
+	void shapeTriangleTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_TRIANGLE); // TODO 102
+	}
+
+	@Test
+	void shapeSquareTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_SQUARE); // TODO 103
+	}
+
+	@Test
+	void shapeRectangleTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_RECTANGLE);
+		dragStart(50, 50);
+		dragEnd(200, 150);
+		checkContent("q1 = 6");
+		GeoElement rectangle = lookup("q1");
+		assertEquals(0, rectangle.getAlphaValue(), Kernel.MIN_PRECISION);
+	}
+
+	@Test
+	void shapeParallelogramTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_PARALLELOGRAM);
+		dragStart(50, 50);
+		dragEnd(200, 150);
+		checkContent("q1 = 4.5");
+		GeoElement rectangle = lookup("q1");
+		assertEquals(0, rectangle.getAlphaValue(), Kernel.MIN_PRECISION);
+	}
+
+	@Test
+	void shapeStadiumTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_STADIUM);
+		dragStart(50, 50);
+		dragEnd(200, 150);
+		checkContent("shape1 = Stadium((2, -2), (3, -2), 2)");
+	}
+
+	@Test
+	void shapeCurveTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_CURVE);
+		dragStart(50, 50);
+		dragEnd(200, 150);
+		checkContent(unicode("a:(1t^3 + 9(1 - t) t^2 + 6(1 - t)² t + 4(1 - t)^3,"
+				+ " -1t^3 - 3(1 - t) t^2 - 9(1 - t)^2 t - 3(1 - t)^3)"));
+		assertFalse(lookup("a").isFillable(), "Curves should not be fillable");
+	}
+
+	@Test
+	void shapePolygonTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_PENTAGON); // TODO 106
+	}
+
+	@Test
+	void shapeFreeformTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_FREEFORM); // TODO 107
+	}
+
+	@Test
+	void circleTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_CIRCLE); // TODO 108
+	}
+
+	@Test
+	void ellipseTool() {
+		setMode(EuclidianConstants.MODE_SHAPE_ELLIPSE); // TODO 109
+	}
+
+	@Test
+	void highlighterTool() {
+		setMode(EuclidianConstants.MODE_HIGHLIGHTER); // TODO 111
+	}
+
+	@Test
+	void videoTool() {
+		setMode(EuclidianConstants.MODE_VIDEO); // TODO 115
+	}
+
+	@Test
+	void audioTool() {
+		setMode(EuclidianConstants.MODE_AUDIO); // TODO 116
+	}
+
+	@Test
+	void geoGebraTool() {
+		setMode(EuclidianConstants.MODE_CALCULATOR); // TODO 117
+	}
+
+	@Test
+	void cameraTool() {
+		setMode(EuclidianConstants.MODE_CAMERA); // TODO 118
+	}
+
+	@Test
+	void inlineTextTool() {
+		setMode(EuclidianConstants.MODE_MEDIA_TEXT);
+		click(30, 40);
+		setMode(EuclidianConstants.MODE_MEDIA_TEXT);
+		dragStart(70, 80);
+		dragEnd(80, 220); // try to make the text 10x140px
+		events.clear();
+
+		checkContent("a", "b");
+
+		Construction cons = getApp().getKernel().getConstruction();
+		GeoInlineText a = (GeoInlineText) cons.lookupLabel("a");
+		GeoInlineText b = (GeoInlineText) cons.lookupLabel("b");
+
+		assertEquals(0.6, a.getLocation().getX(), Kernel.MAX_PRECISION);
+		assertEquals(-0.8, a.getLocation().getY(), Kernel.MAX_PRECISION);
+
+		assertEquals(1.4, b.getLocation().getX(), Kernel.MAX_PRECISION);
+		assertEquals(-1.6, b.getLocation().getY(), Kernel.MAX_PRECISION);
+
+		assertEquals(250, a.getWidth(), Kernel.MAX_PRECISION);
+		assertEquals(36, a.getHeight(), Kernel.MAX_PRECISION);
+
+		assertEquals(36, b.getWidth(), Kernel.MAX_PRECISION);
+		assertEquals(140, b.getHeight(), Kernel.MAX_PRECISION);
+	}
+
+	@ParameterizedTest
+	@ValueSource(doubles = {25, 50, 100, 200, 400})
+	@Issue("MOW-1945")
+	void inlineTextToolKeepsDraggedSizeWhenZoomed(double scale) {
+		EuclidianView view = getApp().getActiveEuclidianView();
+		view.setCoordSystem(0, 0, scale, scale);
+		setMode(EuclidianConstants.MODE_MEDIA_TEXT);
+		dragStart(0, 0);
+		dragEnd(220, 140);
+
+		GeoInline text = (GeoInline) getApp().getKernel().getConstruction().getLastGeoElement();
+		assertDraggedSize(text, 220, 140, scale);
+
+		view.setCoordSystem(0, 0, scale * 2, scale * 2);
+		getDrawable(text).update();
+		assertEquals(440, text.getWidth());
+		assertEquals(280, text.getHeight());
+	}
+
+	@ParameterizedTest
+	@ValueSource(ints = {EuclidianConstants.MODE_EQUATION, EuclidianConstants.MODE_MIND_MAP})
+	@Issue("MOW-1945")
+	void inlineToolsKeepDraggedSizeWhenZoomed(int mode) {
+		getApp().getActiveEuclidianView().setCoordSystem(0, 0, 25, 25);
+		setMode(mode);
+		dragStart(50, 30);
+		dragEnd(350, 130);
+
+		GeoInline geo = (GeoInline) getApp().getKernel().getConstruction().getLastGeoElement();
+		assertDraggedSize(geo, 300, 100, 25);
+	}
+
+	@Test
+	@Issue("MOW-1950")
+	void inlineStickyNoteSize() {
+		setMode(EuclidianConstants.MODE_STICKY_NOTE);
+		click(30, 40);
+		setMode(EuclidianConstants.MODE_STICKY_NOTE);
+		dragStart(70, 80);
+		dragEnd(80, 90); // try to make the sticky note 10x10px
+		events.clear();
+
+		checkContent("a", "b");
+
+		Construction cons = getApp().getKernel().getConstruction();
+		GeoStickyNote a = (GeoStickyNote) cons.lookupLabel("a");
+		GeoStickyNote b = (GeoStickyNote) cons.lookupLabel("b");
+
+		assertEquals(GeoStickyNote.DEFAULT_WIDTH, a.getWidth(), Kernel.MAX_PRECISION);
+		assertEquals(GeoStickyNote.DEFAULT_HEIGHT, a.getHeight(), Kernel.MAX_PRECISION);
+
+		assertEquals(GeoInlineText.MIN_WIDTH, b.getWidth(), Kernel.MAX_PRECISION);
+		assertEquals(GeoStickyNote.MIN_HEIGHT, b.getHeight(), Kernel.MAX_PRECISION);
+	}
+
+	@Test
+	@Issue("MOW-1911")
+	void onlyHttpsHttpAndMailtoLinksCanBeOpened() {
+		assertTrue(EuclidianController.isSupportedLinkProtocol("https://geogebra.org"));
+		assertTrue(EuclidianController.isSupportedLinkProtocol("http://geogebra.org"));
+		assertTrue(EuclidianController.isSupportedLinkProtocol("http://example@email.com"));
+
+		assertFalse(EuclidianController.isSupportedLinkProtocol("javascript:alert(1)"));
+		assertFalse(EuclidianController.isSupportedLinkProtocol(" javascript:alert(1)"));
+		assertFalse(EuclidianController.isSupportedLinkProtocol("JAVASCRIPT:alert(1)"));
+		assertFalse(EuclidianController.isSupportedLinkProtocol("https:evil.com"));
+		assertFalse(EuclidianController.isSupportedLinkProtocol("//bad-url.com"));
+	}
+
+	@Override
+	protected void click(int x, int y) {
+		super.click(x, y);
+		events.add(new TestEvent(x, y));
+	}
+
+	@Override
+	protected void checkContentWithVisibility(boolean visibility, String... desc) {
+		lastVisibility = visibility;
+		lastCheck = desc;
+		super.checkContentWithVisibility(visibility, desc);
+	}
+
+	private void assertDraggedSize(GeoInline geo, double width, double height, double scale) {
+		getDrawable(geo).update();
+		assertEquals(width, geo.getWidth());
+		assertEquals(height, geo.getHeight());
+
+		double zoom = scale / EuclidianView.SCALE_STANDARD;
+		assertEquals(width / zoom, geo.getContentWidth());
+		assertEquals(height / zoom, geo.getContentHeight());
+	}
+}

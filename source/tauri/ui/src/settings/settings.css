@@ -1,0 +1,36 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn-svelte/tailwind.css';
+@import '../lib/shadow.css';
+
+@theme {
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --color-background: var(--locus-background, #fff);
+    --color-foreground: var(--locus-foreground, #202124);
+    --color-primary: var(--locus-primary-600, #db2777);
+    --color-primary-foreground: #fff;
+    --color-popover: var(--color-background);
+    --color-popover-foreground: var(--color-foreground);
+    --color-muted: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+    --color-muted-foreground: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+    --color-secondary: var(--color-muted);
+    --color-secondary-foreground: var(--color-foreground);
+    --color-accent: var(--color-muted);
+    --color-accent-foreground: var(--color-foreground);
+    --color-border: color-mix(in srgb, var(--color-foreground) 13%, transparent);
+    --color-input: color-mix(in srgb, var(--color-foreground) 20%, transparent);
+    --color-ring: var(--color-primary);
+    --color-destructive: #d93025;
+}
+
+/* shadcn components draw borders without a color and expect this default. */
+@layer base {
+    * {
+        @apply border-border;
+    }
+}
+
+/* bits-ui puts this rule in the document head, which the shadow root does not see. */
+[data-select-viewport]::-webkit-scrollbar {
+    display: none;
+}

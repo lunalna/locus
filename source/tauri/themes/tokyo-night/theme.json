@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "tokyo-night",
+  "name": "Tokyo Night",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#1A1B26",
+  "foreground": "#C0CAF5",
+  "colors": {
+    "primary-100": "#24283B",
+    "primary-200": "#2F3954",
+    "primary-300": "#42547E",
+    "primary-400": "#5B77B4",
+    "primary-500": "#6D8FDA",
+    "primary-600": "#7AA2F7",
+    "primary-700": "#A2BEF9",
+    "primary-800": "#CADAFC",
+    "primary-900": "#F2F6FE",
+    "highlight": "#7AA2F7",
+    "highlight-light": "#2F3954"
+  }
+}

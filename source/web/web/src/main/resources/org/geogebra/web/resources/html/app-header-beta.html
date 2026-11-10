@@ -1,0 +1,52 @@
+<script>
+var showHeader = !(window.isEmbed && window.isEmbed());
+defaultParams.marginTop = showHeader ? 64 : 0;
+
+window.addEventListener("load", function() {
+	if (!showHeader) {
+		document.getElementById("logoID").parentElement.parentElement.style.display = "none";
+	}
+	var offline = document.getElementById("logoID").getAttribute("href") == "#";
+	if (offline) {
+	    document.getElementById("logoID").classList.add("hideButton");
+	}
+
+window.ggbHeaderResize = function(event) {
+	var elAppPicker = document.getElementById("suiteAppPicker");
+	var rectAppPicker = elAppPicker.getBoundingClientRect();
+	var rectButtonsLeft = document.getElementById("buttonsID").getBoundingClientRect().left;
+	var elExam = document.getElementById("examId");
+	var rectExamLeft = elExam ? elExam.getBoundingClientRect().left : 0;
+	var overlap = rectAppPicker.right > Math.max(rectButtonsLeft, rectExamLeft);
+	elAppPicker.style.visibility = overlap ? "hidden" : "visible";
+
+	var headerAppSide = document.getElementById("logoID").parentElement;
+	var headerAppSideRight = headerAppSide.getBoundingClientRect().right;
+	var elExamType = document.getElementById("examTypeId");
+    var examTypeLeft = elExamType ? elExamType.getBoundingClientRect().left : 0;
+	var overlapExam = examTypeLeft < headerAppSideRight;
+	if (elExamType) {
+	    elExamType.style.visibility = overlapExam ? "hidden" : "visible";
+	}
+}
+
+window.addEventListener("resize", ggbHeaderResize);
+
+});
+</script>
+<nav class="GeoGebraFrame GeoGebraHeader <!--APP ID-->Header">
+<div class="upperHeader">
+<div class="headerStyle" id="headerID">
+<div tabindex="4000" class="gwt-ToggleButton flatButtonHeader menuBtn gwt-ToggleButton-up" role="button" aria-expanded="false" data-title="Main Menu" aria-label="Main Menu" aria-pressed="false">
+<img class="gwt-Image" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGlkPSJtZW51IiB2aWV3Qm94PSIwIDAgMjQgMjQiIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiNmZmZ9PC9zdHlsZT48L2RlZnM+PHBhdGggZD0iTTIgNWgyMHY0SDJ6bTAgNWgyMHY0SDJ6bTAgNWgyMHY0SDJ6IiBjbGFzcz0iY2xzLTEiLz48cGF0aCBkPSJNMyAxOGgxOHYtMkgzem0wLTVoMTh2LTJIM3ptMC03djJoMThWNnoiLz48L3N2Zz4=" width="24" height="24" alt="Main Menu"></div>
+<button id="logoID" href="<!--LOGO-LINK-->" class="logoLink"><img alt="GeoGebra" src="" class="gwt-Image headerLogo" draggable="false"></button>
+<h1 class="appName" data-trans-key="<!--APP TRANSKEY-->"><!--APP NAME--></h1>
+</div>
+<div id="suiteAppPicker" ></div>
+<!--UNDO-REDO-->
+<div class="buttons" id="buttonsID">
+<!--SHARE-BUTTON-->
+<!--SIGNIN-BUTTON-->
+</div>
+</div>
+</nav>
