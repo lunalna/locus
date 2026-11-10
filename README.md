@@ -1,5 +1,7 @@
 # Locus
 
+![Locus Classic, Geometry and 3D](.github/hero.webp)
+
 Locus is a desktop and iPad app for dynamic mathematics: graphing, geometry, 3D, CAS, a scientific calculator and a whiteboard. It runs on macOS, Windows and iPadOS.
 
 ## Features
@@ -20,3 +22,9 @@ Everything goes through `./dev.sh`. Run it without arguments to see the commands
 - `./dev.sh dev` starts the dev servers and the desktop app.
 - `./dev.sh macos` and `./dev.sh windows` build the apps into `dist/`.
 - `./dev.sh ios` builds the iPad app on a simulator.
+
+## Credits
+
+Locus is a fork of [GeoGebra](https://www.geogebra.org). Made with GeoGebra®. Locus is not affiliated with GeoGebra and is not an official GeoGebra product.
+
+The GeoGebra source code is used under the EUPL 1.2. The GeoGebra language files and style sheets are used under CC BY-NC-SA 4.0. No other GeoGebra materials are used. See [www.geogebra.org/license](https://www.geogebra.org/license). 
