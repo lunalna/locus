@@ -87,6 +87,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      # checkout leaves the tag lightweight, the release notes need its message
+      - run: git fetch --force origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
       - uses: actions/download-artifact@v4
         with:
           path: dist

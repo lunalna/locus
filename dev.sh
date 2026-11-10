@@ -110,7 +110,7 @@ publish() {
             "darwin-x86_64": $macos,
             "windows-x86_64": {signature: $win, url: "\($url)/Locus-windows-setup.exe"}
         }}' > "$DIST/latest.json"
-    gh release create "v$v" --repo "$repo" --title "$NAME $v" --notes "" \
+    gh release create "v$v" --repo "$repo" --title "$NAME $v" --notes-from-tag \
         "$DIST/$NAME-macos.zip" "$DIST/$NAME-macos.app.tar.gz" \
         "$DIST/$NAME-windows-setup.exe" "$DIST/latest.json"
 }
