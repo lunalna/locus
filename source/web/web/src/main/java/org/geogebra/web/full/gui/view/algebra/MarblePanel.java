@@ -175,8 +175,28 @@ public final class MarblePanel extends FlowPanel implements KeyDownHandler, Alge
 		}
 	}
 
+	/**
+	 * Shows the AI icon instead of the plus while the input is a request for the AI,
+	 * or a spinner while it runs.
+	 *
+	 * @param prompt whether the input is a request for the AI
+	 * @param busy whether the AI is working on it
+	 */
+	public void setPrompt(boolean prompt, boolean busy) {
+		initPlus();
+		btnPlus.setIcon(busy ? MaterialDesignResources.INSTANCE.ai_busy()
+				: prompt ? MaterialDesignResources.INSTANCE.ai_prompt()
+				: MaterialDesignResources.INSTANCE.add_black());
+		setStyleName("busy", busy);
+	}
+
 	/** Plus button handler */
 	void onPlusPressed() {
+		// runs the request instead of opening the menu
+		if (item.isPrompt()) {
+			item.runPrompt();
+			return;
+		}
 		if (cmPlus == null) {
 			cmPlus = new ContextMenuAVPlus(item);
 		}

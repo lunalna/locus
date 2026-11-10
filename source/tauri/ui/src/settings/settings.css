@@ -4,7 +4,7 @@
 @import '../lib/shadow.css';
 
 @theme {
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: geogebra-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --color-background: var(--locus-background, #fff);
     --color-foreground: var(--locus-foreground, #202124);
     --color-primary: var(--locus-primary-600, #db2777);

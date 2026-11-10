@@ -220,7 +220,7 @@ public class EuclidianController3DW extends EuclidianController3D implements IsE
 
 	@Override
 	public void onPointerEventMove(PointerEvent event) {
-		mtg.onMouseMoveNow(event, System.currentTimeMillis(), true);
+		mtg.onMouseMove(event);
 	}
 
 	@Override

@@ -859,13 +859,9 @@ $shadow-card-hover: 0px 5px 5px -3px rgba(0,0,0,0.2), 0px 8px 10px 1px rgba(0,0,
 
 		.contentPanel {
 			min-height: 0;
+			max-height: 252px;
 			height: unset;
-
-			&.cheating {
-				min-height: 0px;
-				max-height: 252px;
-				height: unset;
-			}
+			overflow-y: auto;
 
 			div:first-of-type > .captionStyle:first-child {
 				margin: 0px;

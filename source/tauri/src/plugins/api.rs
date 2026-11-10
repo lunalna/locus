@@ -132,7 +132,7 @@ pub fn plugin_view(
         "reload" => view()?.reload().map_err(|e| e.to_string())?,
         "navigate" => {
             let url = browser::address(&url.ok_or("Missing address.")?)?;
-            if !browser::navigation(&app, &url) {
+            if !browser::navigation(&url) {
                 return Err("This site is not allowed in this exam.".into());
             }
             view()?.navigate(url).map_err(|e| e.to_string())?;
@@ -426,11 +426,11 @@ pub fn plugin_exam(
     match action.as_str() {
         "assistant" => {
             caller.require("assistant")?;
-            exam::allow_assistant(&app, allowed()?, name)?;
+            exam::allow_assistant(&app, allowed()?)?;
         }
         "leaving" => {
             caller.require("exam")?;
-            exam::allow_leaving(&app, allowed()?, name)?;
+            exam::allow_leaving(&app, allowed()?)?;
         }
         "log" => {
             caller.require("exam")?;

@@ -53,6 +53,7 @@ import org.gwtproject.dom.style.shared.VerticalAlign;
 import org.gwtproject.event.dom.client.BlurEvent;
 import org.gwtproject.event.dom.client.BlurHandler;
 import org.gwtproject.event.dom.client.ChangeHandler;
+import org.gwtproject.event.dom.client.DomEvent;
 import org.gwtproject.event.dom.client.FocusHandler;
 import org.gwtproject.event.dom.client.KeyDownEvent;
 import org.gwtproject.event.dom.client.KeyPressEvent;
@@ -388,6 +389,9 @@ public class MathFieldW implements MathField, IsWidget, MathFieldAsync, BlurHand
 	private void setKeyListener(final Widget html2, final KeyListener keyListener) {
 		html2.addDomHandler(
 				event -> {
+					if (ignoreDisabled(event)) {
+						return;
+					}
 					// don't kill Ctrl+V or write V
 					if (controlDown(event) && (event.getCharCode() == 'v' || event.getCharCode() == 'V')
 							|| isLeftAltDown()) {
@@ -411,6 +415,9 @@ public class MathFieldW implements MathField, IsWidget, MathFieldAsync, BlurHand
 				KeyPressEvent.getType());
 		html2.addDomHandler(
 				event -> {
+					if (ignoreDisabled(event)) {
+						return;
+					}
 					int code = convertToJavaKeyCode(event.getNativeEvent());
 					// on Mac, the key event right after ^ is a KeyUpEvent,
 					// so it must be redirected to the onKeyTyped() handler.
@@ -440,6 +447,9 @@ public class MathFieldW implements MathField, IsWidget, MathFieldAsync, BlurHand
 				KeyUpEvent.getType());
 		html2.addDomHandler(
 				event -> {
+					if (ignoreDisabled(event)) {
+						return;
+					}
 					if (isRightAlt(event.getNativeEvent())) {
 						setRightAltDown(true);
 					}
@@ -479,6 +489,16 @@ public class MathFieldW implements MathField, IsWidget, MathFieldAsync, BlurHand
 					}
 				},
 				KeyDownEvent.getType());
+	}
+
+	// A disabled field takes no typing.
+	private boolean ignoreDisabled(DomEvent<?> event) {
+		if (enabled) {
+			return false;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		return true;
 	}
 
 	private void redirectToKeyTyped(KeyListener keyListener, char typedChar, KeyUpEvent event) {

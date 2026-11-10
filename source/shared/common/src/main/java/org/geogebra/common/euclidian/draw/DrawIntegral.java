@@ -20,6 +20,7 @@ import org.geogebra.common.awt.GGraphics2D;
 import org.geogebra.common.awt.GRectangle;
 import org.geogebra.common.euclidian.EuclidianStatic;
 import org.geogebra.common.euclidian.EuclidianView;
+import org.geogebra.common.euclidian.plot.CompiledCurve;
 import org.geogebra.common.euclidian.plot.CurvePlotter;
 import org.geogebra.common.euclidian.plot.Gap;
 import org.geogebra.common.euclidian.plot.GeneralPathClippedForCurvePlotter;
@@ -30,6 +31,7 @@ import org.geogebra.common.kernel.cas.AlgoIntegralDefinite;
 import org.geogebra.common.kernel.geos.GeoCasCell;
 import org.geogebra.common.kernel.geos.GeoFunction;
 import org.geogebra.common.kernel.geos.GeoNumeric;
+import org.geogebra.common.kernel.kernelND.CurveEvaluable;
 import org.geogebra.common.util.DoubleUtil;
 
 /**
@@ -41,6 +43,8 @@ public class DrawIntegral extends DrawFunctionArea {
 
 	private GeoNumeric n;
 	private GeoFunction f;
+	// compiled function, null after the integral changed
+	private CurveEvaluable plotted;
 	private NumberValue a;
 	private NumberValue b;
 	private GeneralPathClippedForCurvePlotter gp;
@@ -92,6 +96,16 @@ public class DrawIntegral extends DrawFunctionArea {
 
 	@Override
 	public final void update() {
+		plotted = null;
+		updateArea();
+	}
+
+	@Override
+	public void updateForView() {
+		updateArea();
+	}
+
+	private void updateArea() {
 		isVisible = geo.isEuclidianVisible();
 		if (!isVisible) {
 			return;
@@ -139,7 +153,10 @@ public class DrawIntegral extends DrawFunctionArea {
 		}
 
 		gp.moveTo(ax, y0);
-		CurvePlotter.plotCurve(f, aRW, bRW, view, gp, false, Gap.LINE_TO);
+		if (plotted == null) {
+			plotted = CompiledCurve.of(f);
+		}
+		CurvePlotter.plotCurve(plotted, aRW, bRW, view, gp, false, Gap.LINE_TO);
 		gp.lineTo(bx, y0);
 		gp.lineTo(ax, y0);
 

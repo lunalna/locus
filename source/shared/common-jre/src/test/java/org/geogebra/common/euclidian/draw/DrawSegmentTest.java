@@ -48,6 +48,7 @@ class DrawSegmentTest extends BaseUnitTest {
 				seg.setStartStyle(start);
 				seg.setEndStyle(end);
 				seg.updateVisualStyle(GProperty.COMBINED);
+				drawable.update();
 				counter = 0;
 				drawable.draw(g2d);
 				if (start.ordinal() + end.ordinal() > 0) {

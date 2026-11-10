@@ -166,7 +166,7 @@ public class DrawSegment extends SetDrawable implements Previewable, EndDecorate
 					tmpClipPoints);
 		}
 
-		if (segmentWithEndings != null) {
+		if (hasSegmentStyle()) {
 			segmentWithEndings.update(objStroke);
 		}
 		drawAndUpdateTraceIfNeeded(segment.getTrace());

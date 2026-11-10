@@ -411,6 +411,8 @@ pub fn run() {
             assistant::assistant_reset,
             assistant::assistant_history,
             assistant::assistant_models,
+            assistant::assistant_provider_add,
+            assistant::assistant_prompt,
             tools::assistant_tool_result,
             files::file_pick_save,
             files::file_pick_open,

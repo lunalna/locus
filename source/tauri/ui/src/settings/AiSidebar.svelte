@@ -55,11 +55,11 @@
             <Choice
                 id="provider"
                 value={settings.provider}
-                items={settings.providers.map((provider) => ({ value: provider.id, label: provider.name }))}
+                items={settings.providers.filter((provider) => provider.added).map((provider) => ({ value: provider.id, label: provider.name }))}
                 onchange={(value) => set('provider', value)}
             />
             {#if !provider.ready}
-                <p class="text-muted-foreground">Set up {provider.name} under Model providers first.</p>
+                <p class="text-muted-foreground">Add {provider.name} under Model providers, or choose a provider you added.</p>
             {/if}
         </div>
 

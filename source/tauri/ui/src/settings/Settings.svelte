@@ -8,7 +8,9 @@
     import AppSettings from './AppSettings.svelte';
     import Appearance from './Appearance.svelte';
     import AiGeneral from './AiGeneral.svelte';
+    import AiPrompt from './AiPrompt.svelte';
     import AiProviders from './AiProviders.svelte';
+    import AiSetup from './AiSetup.svelte';
     import AiSidebar from './AiSidebar.svelte';
     import Details from './Details.svelte';
     import General from './General.svelte';
@@ -82,6 +84,7 @@
                     { name: 'General', component: AiGeneral, props: {} },
                     { name: 'Model providers', component: AiProviders, props: {} },
                     { name: 'AI sidebar', component: AiSidebar, props: {} },
+                    { name: 'Natural language input', component: AiPrompt, props: {} },
                     // a browser cannot run an MCP server
                     ...(web ? [] : [{ name: 'MCP server', component: Mcp, props: {} }]),
                 ],
@@ -163,5 +166,6 @@
         </div>
     {/if}
     <Details />
+    <AiSetup />
     <About {modal} />
 </BitsConfig>

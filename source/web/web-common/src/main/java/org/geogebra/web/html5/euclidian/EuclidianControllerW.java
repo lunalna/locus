@@ -319,7 +319,7 @@ public class EuclidianControllerW extends EuclidianController
 		if (draggingOccurred) {
 			((EuclidianViewW) getView()).getDockPanel().enableZoomPanelEvents(false);
 		}
-		mtg.onMouseMoveNow(event, System.currentTimeMillis(), true);
+		mtg.onMouseMove(event);
 	}
 
 	@Override

@@ -17,6 +17,7 @@
 package org.geogebra.common.euclidian;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.geogebra.common.awt.AwtFactory;
@@ -31,7 +32,6 @@ import org.geogebra.common.awt.GShape;
 import org.geogebra.common.kernel.MyPoint;
 import org.geogebra.common.kernel.SegmentType;
 import org.geogebra.common.util.MyMath;
-import org.geogebra.common.util.debug.Log;
 
 /**
  * A GeneralPath implementation that does clipping of line segments at the
@@ -43,9 +43,17 @@ import org.geogebra.common.util.debug.Log;
  */
 public class GeneralPathClipped {
 	private static final double EPSILON = 0.01;
-	private final ArrayList<MyPoint> unprocessedPathPoints;
-	/** Cached clipped path, considered invalid if {@code unprocessedPathPoints} are not empty */
+	// unprocessed path points, a null type marks an unused position
+	private double[] xs = new double[16];
+	private double[] ys = new double[16];
+	private SegmentType[] types = new SegmentType[16];
+	private int count;
+	/** Cached clipped path, considered invalid if there are unprocessed points */
 	private final GGeneralPath gp;
+	// end of the last segment added to gp
+	private boolean hasCurrent;
+	private double currentX;
+	private double currentY;
 
 	private static final double MAX_COORD_VALUE = 10000;
 
@@ -59,6 +67,11 @@ public class GeneralPathClipped {
 
 	private boolean needClosePath;
 	private GRectangle2D bounds;
+	private boolean hasBounds;
+	private double minX;
+	private double minY;
+	private double maxX;
+	private double maxY;
 	private double auxX;
 	private double auxY;
 	// first control point
@@ -67,8 +80,6 @@ public class GeneralPathClipped {
 	// second control point
 	private double cont2X = Double.NaN;
 	private double cont2Y = Double.NaN;
-
-	private GRectangle2D oldBounds;
 	private final ClipAlgoSutherlandHodogman clipAlgoSutherlandHodogman;
 
 	public GeneralPathClipped(EuclidianViewInterfaceSlim view) {
@@ -83,29 +94,47 @@ public class GeneralPathClipped {
 	 */
 	public GeneralPathClipped(EuclidianViewInterfaceSlim view, int rule) {
 		this.view = view;
-		unprocessedPathPoints = new ArrayList<>();
 		clipAlgoSutherlandHodogman = new ClipAlgoSutherlandHodogman();
 		gp = AwtFactory.getPrototype().newGeneralPath(rule);
 	}
 
 	/**
-	 * @return first point of the path
+	 * @return x-coord of the first point, only valid if size() &gt; 0
 	 */
-	public MyPoint firstPoint() {
-		if (unprocessedPathPoints.isEmpty()) {
-			return null;
-		}
-		return unprocessedPathPoints.get(0);
+	public final double getFirstX() {
+		return xs[0];
+	}
+
+	/**
+	 * @return y-coord of the first point, only valid if size() &gt; 0
+	 */
+	public final double getFirstY() {
+		return ys[0];
+	}
+
+	/**
+	 * @apiNote This should not be called after {@code getGeneralPath}.
+	 * @return x-coord of the last point, only valid if size() &gt; 0
+	 */
+	public final double getCurrentX() {
+		return xs[count - 1];
+	}
+
+	/**
+	 * @apiNote This should not be called after {@code getGeneralPath}.
+	 * @return y-coord of the last point, only valid if size() &gt; 0
+	 */
+	public final double getCurrentY() {
+		return ys[count - 1];
 	}
 
 	/**
 	 * Clears all points and resets internal variables
 	 */
 	public final void reset() {
-		unprocessedPathPoints.clear();
+		clearPoints();
 		gp.reset();
-		oldBounds = bounds;
-		bounds = null;
+		hasBounds = false;
 		smallPolygon = true;
 		polygon = true;
 		needClosePath = false;
@@ -132,31 +161,34 @@ public class GeneralPathClipped {
 	 * @return this as GeneralPath
 	 */
 	public GGeneralPath getGeneralPath() {
-		if (unprocessedPathPoints.isEmpty()) {
+		if (count == 0) {
 			return gp;
 		}
 
 		gp.reset();
+		hasCurrent = false;
 		if (smallPolygon || !polygon) {
 			addSimpleSegments();
 		} else {
 			addClippedSegmentsWithSutherlandHodogman();
 		}
 
-		// clear pathPoints to free up memory
-		unprocessedPathPoints.clear();
+		clearPoints();
 
 		return gp;
 	}
 
+	private void clearPoints() {
+		for (int i = 0; i < count; i++) {
+			types[i] = null;
+		}
+		count = 0;
+	}
+
 	private void addSimpleSegments() {
-		for (int i = 0; i < unprocessedPathPoints.size(); i++) {
-			MyPoint curP = unprocessedPathPoints.get(i);
-			// https://play.google.com/apps/publish/?dev_acc=05873811091523087820#ErrorClusterDetailsPlace:p=org.geogebra.android&et=CRASH&lr=LAST_7_DAYS&ecn=java.lang.NullPointerException&tf=SourceFile&tc=org.geogebra.common.euclidian.GeneralPathClipped&tm=addSimpleSegments&nid&an&c&s=new_status_desc
-			if (curP != null) {
-				addToGeneralPath(curP, curP.getSegmentType());
-			} else {
-				Log.error("curP shouldn't be null here");
+		for (int i = 0; i < count; i++) {
+			if (types[i] != null) {
+				addToGeneralPath(xs[i], ys[i], types[i]);
 			}
 		}
 		if (needClosePath) {
@@ -173,14 +205,20 @@ public class GeneralPathClipped {
 			{view.getWidth() + padding, -padding},
 		};
 
-		if (needClosePath) {
-			unprocessedPathPoints.get(0).setLineTo(true);
+		ArrayList<MyPoint> points = new ArrayList<>(count);
+		for (int i = 0; i < count; i++) {
+			if (types[i] != null) {
+				points.add(new MyPoint(xs[i], ys[i], types[i]));
+			}
+		}
+		if (needClosePath && !points.isEmpty()) {
+			points.get(0).setLineTo(true);
 		}
 
-		List<MyPoint> result = clipAlgoSutherlandHodogman.process(unprocessedPathPoints, clipPoints);
+		List<MyPoint> result = clipAlgoSutherlandHodogman.process(points, clipPoints);
 
 		for (MyPoint curP : result) {
-			addToGeneralPath(curP, curP.getSegmentType());
+			addToGeneralPath(curP.x, curP.y, curP.getSegmentType());
 		}
 
 		if (!result.isEmpty() && needClosePath) {
@@ -188,71 +226,64 @@ public class GeneralPathClipped {
 		}
 	}
 
-	private void addToGeneralPath(GPoint2D q, SegmentType lineTo) {
-		GPoint2D p = gp.getCurrentPoint();
-
+	private void addToGeneralPath(double x, double y, SegmentType lineTo) {
 		if (lineTo == SegmentType.CONTROL) {
 			if (Double.isNaN(cont1X) && Double.isNaN(cont1Y)) {
-				cont1X = q.getX();
-				cont1Y = q.getY();
+				cont1X = x;
+				cont1Y = y;
 			} else {
-				cont2X = q.getX();
-				cont2Y = q.getY();
+				cont2X = x;
+				cont2Y = y;
 			}
+			return;
 		} else if (lineTo == SegmentType.CURVE_TO) {
 			if (!Double.isNaN(cont1X)
 					&& !Double.isNaN(cont1Y)
 					&& !Double.isNaN(cont2X)
 					&& !Double.isNaN(cont2Y)) {
-				gp.curveTo(cont1X, cont1Y, cont2X, cont2Y, q.getX(), q.getY());
-				cont1X = Double.NaN;
-				cont1Y = Double.NaN;
-				cont2X = Double.NaN;
-				cont2Y = Double.NaN;
+				gp.curveTo(cont1X, cont1Y, cont2X, cont2Y, x, y);
 			} else if (!Double.isNaN(cont1X) && !Double.isNaN(cont1Y)) {
-				gp.quadTo(cont1X, cont1Y, q.getX(), q.getY());
-				cont1X = Double.NaN;
-				cont1Y = Double.NaN;
-				cont2X = Double.NaN;
-				cont2Y = Double.NaN;
+				gp.quadTo(cont1X, cont1Y, x, y);
+			} else {
+				return;
 			}
+			cont1X = Double.NaN;
+			cont1Y = Double.NaN;
+			cont2X = Double.NaN;
+			cont2Y = Double.NaN;
 		} else if (lineTo == SegmentType.AUXILIARY) {
-			auxX = q.getX();
-			auxY = q.getY();
-		} else if (lineTo == SegmentType.ARC_TO && p != null) {
-			try {
-
-				double dx1 = auxX - p.getX();
-				double dy1 = auxY - p.getY();
-				double dx2 = auxX - q.getX();
-				double dy2 = auxY - q.getY();
-				double angle = MyMath.angle(dx1, dy1, dx2, dy2);
-				double cv = btan(Math.PI - angle) * Math.tan(angle / 2);
-				gp.curveTo(
-						p.getX() + dx1 * cv,
-						p.getY() + dy1 * cv,
-						q.getX() + dx2 * cv,
-						q.getY() + dy2 * cv,
-						q.getX(),
-						q.getY());
-
-			} catch (Exception e) {
-				gp.moveTo(q.getX(), q.getY());
+			auxX = x;
+			auxY = y;
+			return;
+		} else if (lineTo == SegmentType.ARC_TO && hasCurrent) {
+			double dx1 = auxX - currentX;
+			double dy1 = auxY - currentY;
+			double dx2 = auxX - x;
+			double dy2 = auxY - y;
+			double angle = MyMath.angle(dx1, dy1, dx2, dy2);
+			double cv = btan(Math.PI - angle) * Math.tan(angle / 2);
+			gp.curveTo(
+					currentX + dx1 * cv,
+					currentY + dy1 * cv,
+					x + dx2 * cv,
+					y + dy2 * cv,
+					x,
+					y);
+		} else if (lineTo == SegmentType.LINE_TO && hasCurrent) {
+			// Safari: 0 length segments not drawn (MOW-1818 / MOW-878)
+			if (MyMath.length(x - currentX, y - currentY) < EPSILON) {
+				gp.lineTo(x + EPSILON, y);
+				currentX = x + EPSILON;
+				currentY = y;
+				return;
 			}
-		} else if (lineTo == SegmentType.LINE_TO && p != null) {
-			try {
-				// Safari: 0 length segments not drawn (MOW-1818 / MOW-878)
-				if (p.distance(q) < EPSILON) {
-					gp.lineTo(q.getX() + EPSILON, q.getY());
-				} else {
-					gp.lineTo(q.getX(), q.getY());
-				}
-			} catch (Exception e) {
-				gp.moveTo(q.getX(), q.getY());
-			}
+			gp.lineTo(x, y);
 		} else {
-			gp.moveTo(q.getX(), q.getY());
+			gp.moveTo(x, y);
 		}
+		hasCurrent = true;
+		currentX = x;
+		currentY = y;
 	}
 
 	private static double btan(double angle) {
@@ -299,12 +330,20 @@ public class GeneralPathClipped {
 			return;
 		}
 
-		MyPoint p = new MyPoint(x, y, SegmentType.LINE_TO);
-		unprocessedPathPoints.ensureCapacity(pos + 1);
-		while (unprocessedPathPoints.size() <= pos) {
-			unprocessedPathPoints.add(null);
+		ensureCapacity(pos + 1);
+		xs[pos] = x;
+		ys[pos] = y;
+		types[pos] = SegmentType.LINE_TO;
+		count = Math.max(count, pos + 1);
+	}
+
+	private void ensureCapacity(int capacity) {
+		if (capacity > xs.length) {
+			int length = Math.max(capacity, 2 * xs.length);
+			xs = Arrays.copyOf(xs, length);
+			ys = Arrays.copyOf(ys, length);
+			types = Arrays.copyOf(types, length);
 		}
-		unprocessedPathPoints.set(pos, p);
 	}
 
 	/**
@@ -326,33 +365,32 @@ public class GeneralPathClipped {
 			polygon = false;
 		}
 
-		MyPoint p = new MyPoint(x, y, segmentType);
-		updateBounds(p);
-		unprocessedPathPoints.add(p);
-	}
-
-	private void updateBounds(GPoint2D point) {
-		double x = point.getX();
-		double y = point.getY();
-		if (bounds == null) {
-			bounds = oldBounds != null ? oldBounds : AwtFactory.getPrototype().newRectangle2D();
-			bounds.setRect(x, y, 0, 0);
+		if (!hasBounds) {
+			hasBounds = true;
+			minX = x;
+			maxX = x;
+			minY = y;
+			maxY = y;
+		} else {
+			if (x < minX) {
+				minX = x;
+			} else if (x > maxX) {
+				maxX = x;
+			}
+			if (y < minY) {
+				minY = y;
+			} else if (y > maxY) {
+				maxY = y;
+			}
 		}
 		smallPolygon =
 				smallPolygon && polygon && Math.abs(x) < MAX_COORD_VALUE && Math.abs(y) < MAX_COORD_VALUE;
 
-		bounds.add(x, y);
-	}
-
-	/**
-	 * @apiNote This should not be called after {@code getGeneralPath}.
-	 * @return current point
-	 */
-	public GPoint2D getCurrentPoint() {
-		if (unprocessedPathPoints.isEmpty()) {
-			return null;
-		}
-		return unprocessedPathPoints.get(unprocessedPathPoints.size() - 1);
+		ensureCapacity(count + 1);
+		xs[count] = x;
+		ys[count] = y;
+		types[count] = segmentType;
+		count++;
 	}
 
 	/**
@@ -410,14 +448,21 @@ public class GeneralPathClipped {
 	 * @return path bounds
 	 */
 	public GRectangle getBounds() {
-		return bounds == null ? AwtFactory.getPrototype().newRectangle() : bounds.getBounds();
+		return hasBounds ? getBounds2D().getBounds() : AwtFactory.getPrototype().newRectangle();
 	}
 
 	/**
 	 * @return path bounds
 	 */
 	public GRectangle2D getBounds2D() {
-		return bounds == null ? AwtFactory.getPrototype().newRectangle2D() : bounds;
+		if (!hasBounds) {
+			return AwtFactory.getPrototype().newRectangle2D();
+		}
+		if (bounds == null) {
+			bounds = AwtFactory.getPrototype().newRectangle2D();
+		}
+		bounds.setRect(minX, minY, maxX - minX, maxY - minY);
+		return bounds;
 	}
 
 	/**
@@ -462,7 +507,7 @@ public class GeneralPathClipped {
 	 * @return number of points
 	 */
 	public int size() {
-		return unprocessedPathPoints.size();
+		return count;
 	}
 
 	/**

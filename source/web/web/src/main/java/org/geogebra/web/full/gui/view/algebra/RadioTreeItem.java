@@ -68,6 +68,7 @@ import org.geogebra.web.full.gui.inputfield.AutoCompletePopup;
 import org.geogebra.web.full.gui.layout.panels.AlgebraPanelInterface;
 import org.geogebra.web.full.gui.view.algebra.compositefocus.AVCompositeFocusAssembler;
 import org.geogebra.web.full.gui.view.algebra.compositefocus.AVFocusContributorFactory;
+import org.geogebra.web.full.gui.view.assistant.PromptBridge;
 import org.geogebra.web.full.main.AppWFull;
 import org.geogebra.web.html5.gui.BaseWidgetFactory;
 import org.geogebra.web.html5.gui.accessibility.HasFocus;
@@ -152,6 +153,7 @@ public abstract class RadioTreeItem extends AVTreeItem
 
 	protected Canvas canvas;
 	private Graphics2DW canvasGraphics;
+	private String canvasKey;
 
 	String commandError;
 
@@ -174,6 +176,8 @@ public abstract class RadioTreeItem extends AVTreeItem
 	 * this panel contains the marble (radio) button
 	 */
 	protected AlgebraItemHeader marblePanel;
+	private boolean prompt;
+	private boolean promptBusy;
 
 	protected FlowPanel definitionPanel;
 
@@ -809,13 +813,20 @@ public abstract class RadioTreeItem extends AVTreeItem
 	}
 
 	private void latexToCanvas(String text) {
+		boolean serif = DrawEquationW.needsSerif(geo);
+		String key = text + '|' + getFontSize() + '|' + app.getPixelRatio() + '|'
+				+ ThemeColors.getVersion() + '|' + serif;
+		if (canvas != null && key.equals(canvasKey)) {
+			return;
+		}
+		// the editor draws on the same canvas
+		canvasKey = controller.isEditing() ? null : key;
 		if (canvasGraphics != null) {
 			canvasGraphics.cancelCallbacks();
 		}
 		canvas = DrawEquationW.makeCleanCanvas(canvas);
 		canvasGraphics = ((DrawEquationW) app.getDrawEquation())
-				.paintOnCleanCanvas(
-						text, canvas, getFontSize(), GColor.BLACK, DrawEquationW.needsSerif(geo));
+				.paintOnCleanCanvas(text, canvas, getFontSize(), GColor.BLACK, serif);
 	}
 
 	private void updateLaTeX(String text) {
@@ -1666,6 +1677,7 @@ public abstract class RadioTreeItem extends AVTreeItem
 					.getStyle()
 					.setProperty("minHeight", getController().getEditHeight() + "px");
 		}
+		canvasKey = null;
 		ensureCanvas();
 		appendCanvas();
 
@@ -1726,6 +1738,7 @@ public abstract class RadioTreeItem extends AVTreeItem
 			}
 		}
 
+		canvasKey = null;
 		if (ensureCanvas()) {
 			main.clear();
 			main.add(this.marblePanel);
@@ -1800,6 +1813,7 @@ public abstract class RadioTreeItem extends AVTreeItem
 	public void onKeyTyped() {
 		this.removeDummy();
 		inputControl.ensureInputMoreMenu();
+		updatePrompt();
 		updatePreview();
 		popupSuggestions();
 		onCursorMove();
@@ -1808,6 +1822,65 @@ public abstract class RadioTreeItem extends AVTreeItem
 
 	protected void updateAriaLabel() {
 		// Needed only for LaTeXTreeItem
+	}
+
+	/**
+	 * Switches the input row to a plain language request for the AI while its text starts
+	 * with "?".
+	 */
+	private void updatePrompt() {
+		boolean value = isInputTreeItem() && PromptBridge.isEnabled() && getText().startsWith("?");
+		if (promptBusy || value == prompt) {
+			return;
+		}
+		prompt = value;
+		getController().setInputAsText(value);
+		clearPreviewAndSuggestions();
+		if (marblePanel instanceof MarblePanel panel) {
+			panel.setPrompt(value, false);
+		}
+	}
+
+	/**
+	 * @return whether the input is a request for the AI
+	 */
+	public boolean isPrompt() {
+		return prompt;
+	}
+
+	/**
+	 * Locks the input and lets the AI carry out the request.
+	 */
+	public void runPrompt() {
+		String text = getText().substring(1).trim();
+		if (promptBusy || text.isEmpty()) {
+			return;
+		}
+		promptBusy = true;
+		getMathField().setEnabled(false);
+		if (marblePanel instanceof MarblePanel panel) {
+			panel.setPrompt(true, true);
+		}
+		PromptBridge.run(text, this::onPromptDone);
+	}
+
+	private void onPromptDone(String error, String reply) {
+		promptBusy = false;
+		getMathField().setEnabled(true);
+		if (marblePanel instanceof MarblePanel panel) {
+			panel.setPrompt(true, false);
+		}
+		if (error != null) {
+			// the request stays so it can be changed and sent again
+			app.getToolTipManager().showBottomMessage(error, app, ToolTip.Role.ALERT);
+		} else {
+			setText("");
+			updatePrompt();
+			if (reply != null && !reply.isEmpty()) {
+				app.getToolTipManager().showBottomMessage(reply, app);
+			}
+		}
+		setFocus(true);
 	}
 
 	/**
@@ -2073,6 +2146,7 @@ public abstract class RadioTreeItem extends AVTreeItem
 
 	protected void resetCanvas() {
 		canvas = null;
+		canvasKey = null;
 	}
 
 	/**

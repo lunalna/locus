@@ -17,7 +17,6 @@
 package org.geogebra.common.euclidian.plot;
 
 import org.geogebra.common.awt.GPathIterator;
-import org.geogebra.common.awt.GPoint2D;
 import org.geogebra.common.euclidian.EuclidianView;
 import org.geogebra.common.euclidian.EuclidianViewInterfaceSlim;
 import org.geogebra.common.euclidian.GeneralPathClipped;
@@ -83,17 +82,17 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 	 * @param lineTo type for drawing the segment
 	 */
 	public void drawTo(double x, double y, SegmentType lineTo) {
-		GPoint2D point = getCurrentPoint();
-
 		// no points in path yet
-		if (point == null) {
+		if (size() == 0) {
 			moveTo(x, y);
 			lineDrawn = false;
 			return;
 		}
 
-		boolean distant = !DoubleUtil.isEqual(x, point.getX(), MIN_PIXEL_DISTANCE)
-				|| !DoubleUtil.isEqual(y, point.getY(), MIN_PIXEL_DISTANCE);
+		double lastX = getCurrentX();
+		double lastY = getCurrentY();
+		boolean distant = !DoubleUtil.isEqual(x, lastX, MIN_PIXEL_DISTANCE)
+				|| !DoubleUtil.isEqual(y, lastY, MIN_PIXEL_DISTANCE);
 		if (lineTo == SegmentType.CONTROL
 				|| lineTo == SegmentType.CURVE_TO
 				|| lineTo == SegmentType.ARC_TO
@@ -115,7 +114,7 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 
 		if (isLine) {
 			// Safari does not draw points with moveTo lineTo
-			if (x == point.getX() && y == point.getY()) {
+			if (x == lastX && y == lastY) {
 				addPoint(x + EPSILON, y, lineTo);
 			} else {
 				addPoint(x, y, lineTo);
@@ -133,9 +132,8 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 
 	@Override
 	public void corner() {
-		MyPoint fp = firstPoint();
-		if (fp != null) {
-			corner(fp.x, fp.y);
+		if (size() > 0) {
+			corner(getFirstX(), getFirstY());
 			closePath();
 		}
 	}
@@ -150,12 +148,11 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 	private void corner(double x0, double y0) {
 		int w = view.getWidth();
 		int h = view.getHeight();
-		GPoint2D pt = getCurrentPoint();
-		if (pt == null) {
+		if (size() == 0) {
 			return;
 		}
-		double x = pt.getX();
-		double y = pt.getY();
+		double x = getCurrentX();
+		double y = getCurrentY();
 
 		if ((x < 0 && x0 > w) || (x > w && x0 < 0)) {
 			drawTo(x, -VIEWPORT_CLIP_MARGIN_PX, true);
@@ -194,7 +191,7 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 		} else if (moveToAllowed == Gap.LINE_TO || moveToAllowed == Gap.CORNER) {
 			drawTo(x0, y0, true);
 		} else if (moveToAllowed == Gap.RESET_XMIN) {
-			double d = getCurrentPoint().getY();
+			double d = getCurrentY();
 			if (!DoubleUtil.isEqual(d, y0)) {
 				drawTo(-VIEWPORT_CLIP_MARGIN_PX, d, true);
 				drawTo(-VIEWPORT_CLIP_MARGIN_PX, y0, true);
@@ -202,7 +199,7 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 			drawTo(x0, y0, true);
 
 		} else if (moveToAllowed == Gap.RESET_XMAX) {
-			double d = getCurrentPoint().getY();
+			double d = getCurrentY();
 			if (!DoubleUtil.isEqual(d, y0)) {
 				drawTo(view.getWidth() + VIEWPORT_CLIP_MARGIN_PX, d, true);
 				drawTo(view.getWidth() + VIEWPORT_CLIP_MARGIN_PX, y0, true);
@@ -210,16 +207,16 @@ public class GeneralPathClippedForCurvePlotter extends GeneralPathClipped implem
 			drawTo(x0, y0, true);
 
 		} else if (moveToAllowed == Gap.RESET_YMIN) {
-			double d = getCurrentPoint().getX();
+			double d = getCurrentX();
 			if (!DoubleUtil.isEqual(d, x0)) {
 				drawTo(d, -VIEWPORT_CLIP_MARGIN_PX, true);
 				drawTo(x0, -VIEWPORT_CLIP_MARGIN_PX, true);
 			}
 			drawTo(x0, y0, true);
 		} else if (moveToAllowed == Gap.RESET_YMAX) {
-			double d = getCurrentPoint().getX();
+			double d = getCurrentX();
 			if (!DoubleUtil.isEqual(d, x0)) {
-				drawTo(getCurrentPoint().getX(), view.getHeight() + VIEWPORT_CLIP_MARGIN_PX, true);
+				drawTo(d, view.getHeight() + VIEWPORT_CLIP_MARGIN_PX, true);
 				drawTo(x0, view.getHeight() + VIEWPORT_CLIP_MARGIN_PX, true);
 			}
 			drawTo(x0, y0, true);

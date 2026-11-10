@@ -380,6 +380,11 @@ fun createHtml(inlineCss: Boolean) {
         into(warDirRel)
     }
 
+    copy {
+        from(file("../../tauri/fonts"))
+        into("$warDirRel/fonts")
+    }
+
     appSpecs.specs.forEach { app ->
         val replaceHtml = if (app.id == "classic") ::classicHtml else ::appHtml
         file("war/${app.id}-offline.html").writeText(english(replaceHtml(app, false, true, inlineCss), app.title, ""))
@@ -444,7 +449,11 @@ fun desktopHtml(offline: String, app: String, name: String): String {
         " if (name && !window.resourcePackIcon) name.style.display = \"none\"; window.locusLogo(); });" +
         " window.locusAppIcons = $icons;" +
         // translations cached by older builds would bring back removed strings
-        " localStorage.removeItem(\"translation\");</script>"
+        " localStorage.removeItem(\"translation\");</script>\n" +
+        "\t<style>@font-face { font-family: Outfit; src: url(\"fonts/Outfit.ttf\"); font-weight: 100 900; font-display: block; }</style>\n" +
+        // the app font, unless a resource pack is active
+        "\t<script>if (!window.resourcePackUrl) document.write('<style>@font-face { font-family: geogebra-sans-serif;" +
+        " src: url(\"fonts/Outfit.ttf\"); font-weight: 100 900; font-display: block; }</style>');</script>"
     val locusSplash = template("locus-splash.html").replace("<!--APP NAME-->", name)
     return offline.replaceFirst("<head>", csp)
         .replace(Regex("<body[^>]*>")) { it.value + locusSplash }

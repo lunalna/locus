@@ -29,6 +29,7 @@ import org.geogebra.common.awt.GRectangle2D;
 import org.geogebra.common.awt.GShape;
 import org.geogebra.common.euclidian.Drawable;
 import org.geogebra.common.euclidian.EuclidianView;
+import org.geogebra.common.euclidian.plot.CompiledCurve;
 import org.geogebra.common.euclidian.plot.CurvePlotter;
 import org.geogebra.common.euclidian.plot.FunctionPlotter;
 import org.geogebra.common.euclidian.plot.Gap;
@@ -59,6 +60,8 @@ public class DrawParametricCurve extends Drawable {
 
 	private final FunctionPlotter functionPlotter;
 	private final CurveEvaluable curve;
+	// compiled curve, null after the curve changed
+	private CurveEvaluable plotted;
 	protected GeneralPathClippedForCurvePlotter gp;
 	private boolean isVisible;
 	private boolean labelVisible;
@@ -92,6 +95,11 @@ public class DrawParametricCurve extends Drawable {
 
 	@Override
 	public final void update() {
+		plotted = null;
+		updateCurve();
+	}
+
+	private void updateCurve() {
 		isVisible = geo.isEuclidianVisible();
 		if (!isVisible) {
 			return;
@@ -119,7 +127,7 @@ public class DrawParametricCurve extends Drawable {
 	@Override
 	public void updateForView() {
 		if (!isFunctionPlot()) {
-			update();
+			updateCurve();
 		}
 	}
 
@@ -152,8 +160,11 @@ public class DrawParametricCurve extends Drawable {
 			view.toScreenCoords(eval);
 			labelPoint = new GPoint((int) eval[0], (int) eval[1]);
 		} else {
+			if (plotted == null) {
+				plotted = CompiledCurve.of(curve);
+			}
 			labelPoint = CurvePlotter.plotCurve(
-					curve, min, max, view, gp, labelVisible, fillCurve ? Gap.CORNER : Gap.MOVE_TO);
+					plotted, min, max, view, gp, labelVisible, fillCurve ? Gap.CORNER : Gap.MOVE_TO);
 		}
 
 		// gp on screen?

@@ -14,15 +14,13 @@
  * See https://www.geogebra.org/license for full licensing details
  */
 
+
 package org.geogebra.common.euclidian.plot;
 
-import org.apache.commons.math3.util.Cloner;
 import org.geogebra.common.awt.GPoint;
 import org.geogebra.common.euclidian.EuclidianView;
-import org.geogebra.common.euclidian.EuclidianViewBoundsImp;
 import org.geogebra.common.kernel.Kernel;
 import org.geogebra.common.kernel.kernelND.CurveEvaluable;
-import org.geogebra.common.kernel.kernelND.GeoCurveCartesianND;
 import org.geogebra.common.util.DoubleUtil;
 
 /**
@@ -36,7 +34,9 @@ public class CurveSegmentPlotter {
 
 	// maximum angle between two line segments
 	private static final double MAX_ANGLE = 10; // degrees
+	private static final double MAX_ANGLE_OFF_SCREEN = 45; // degrees
 	public static final double MAX_BEND = Math.tan(MAX_ANGLE * Kernel.PI_180);
+	private static final double MAX_BEND_OFF_SCREEN = Math.tan(MAX_ANGLE_OFF_SCREEN * Kernel.PI_180);
 
 	// maximum number of bisections (max number of plot points = 2^MAX_DEPTH)
 	private static final int MAX_DEFINED_BISECTIONS = 16;
@@ -46,6 +46,11 @@ public class CurveSegmentPlotter {
 	private static final int MAX_CONTINUITY_BISECTIONS = 8;
 
 	private static final double MAX_JUMP = 5;
+	// maximum number of times to loop when the screen difference is zero
+	// eg Curve[0sin(t), 0t, t, 0, 6]
+	private static final int MAX_ZERO_COUNT = 1000;
+	private static final int LENGTH = MAX_DEFINED_BISECTIONS + 1;
+
 	private final CurveEvaluable curve;
 	private final double tMin;
 	private final double tMax;
@@ -53,21 +58,37 @@ public class CurveSegmentPlotter {
 	private final double maxParamStep;
 	private final EuclidianView view;
 	private final PathPlotter gp;
-	private final LabelPositionCalculator labelPositionCalculator;
 	private boolean needLabelPos;
 	private final Gap moveToAllowed;
 	private GPoint labelPoint = null;
-	private double[] move;
-	private boolean nextLineToNeedsMoveToFirst;
+
+	private final int dim;
 	private final double[] eval;
-	private double[] evalLeft;
-	private double[] evalRight;
-	private CurveSegmentInfo info;
-	private SegmentParams params;
-	public static final int LENGTH = MAX_DEFINED_BISECTIONS + 1;
-	private CurvePlotterStack stack;
+	private final double[] evalLeft;
+	private final double[] evalRight;
+	private final double[] move;
+	private final double[] diff;
+	private final double[] prevDiff;
+	private boolean nextLineToNeedsMoveToFirst;
+
+	// evaluated curve points that wait for their left neighbors
+	private final double[] divisors = new double[LENGTH];
+	private final int[] stackDyad = new int[LENGTH];
+	private final int[] stackDepth = new int[LENGTH];
+	private final boolean[] stackOnScreen = new boolean[LENGTH];
+	private final double[] stackEval;
+	private int top;
+
+	private int dyad = 1;
+	private int depth;
+	private double t;
+	private double left;
+	private int countDiffZeros;
 	private boolean onScreen;
-	private double[] divisors;
+	private boolean offScreen;
+	private boolean reachedMinStep;
+	private boolean distanceOrAngleInvalid;
+	private double minDistX;
 
 	/**
 	 * Draws a parametric curve (x(t), y(t)) for t in [tMin, tMax].
@@ -99,82 +120,76 @@ public class CurveSegmentPlotter {
 		this.maxParamStep = maxParamStep;
 		this.view = view;
 		this.gp = gp;
-		// plot interval for t in [tMin, tMax]
-		// If we run into a problem, i.e. an undefined point f(t), we bisect
-		// the interval and plot both intervals [left, (left + right)/2] and
-		// [(left + right)/2, right]
-		// see catch block
-
 		needLabelPos = calcLabelPos;
 		this.moveToAllowed = moveToAllowed;
 
-		// The following algorithm by John Gillam avoids multiple
-		// evaluations of the curve for the same parameter value t
-		// see an explanation of this algorithm below.
-
-		move = curve.newDoubleArray();
-		nextLineToNeedsMoveToFirst = false;
 		eval = curve.newDoubleArray();
-		labelPositionCalculator = new LabelPositionCalculator(new EuclidianViewBoundsImp(view));
+		dim = eval.length;
+		evalLeft = new double[dim];
+		evalRight = new double[dim];
+		move = new double[dim];
+		diff = new double[dim];
+		prevDiff = new double[dim];
+		stackEval = new double[LENGTH * dim];
+		t = tMax;
+		left = tMin;
+		divisors[0] = tMax - tMin;
+		for (int i = 1; i < LENGTH; i++) {
+			divisors[i] = divisors[i - 1] / 2;
+		}
 		if (start()) {
 			plot();
 		}
 	}
 
 	private boolean start() {
-		if (isCurveUndefinedAt(tMin)) {
+		curve.updateExpandedFunctions();
+		curve.evaluateCurve(tMin, eval);
+		if (isUndefined(eval)) {
 			plotProblemInterval(tMin);
 			return false;
 		}
+		copy(eval, evalLeft);
 
-		evalLeft = Cloner.clone(eval);
-
-		if (isCurveUndefinedAt(tMax)) {
+		curve.evaluateCurve(tMax, eval);
+		if (isUndefined(eval)) {
 			plotProblemInterval(tMin);
 			return false;
 		}
-
 		onScreen = view.isOnView(eval);
-		evalRight = Cloner.clone(eval);
+		copy(eval, evalRight);
 
 		gp.firstPoint(evalLeft, moveToAllowed);
 
-		createStack();
-		createDivisors();
-		createParams();
-		initDiffs();
-		createInfo();
+		push();
+		minDistX = curve.getMinDistX();
+		view.getOnScreenDiff(evalLeft, evalRight, diff);
+		curve.evaluateCurve(tMin + divisors[LENGTH - 1], eval);
+		view.getOnScreenDiff(evalLeft, eval, prevDiff);
 		return true;
 	}
 
-	private void createStack() {
-		stack = new CurvePlotterStack(LENGTH, onScreen, evalRight);
-	}
-
-	private void createDivisors() {
-		divisors = createDivisors(tMin, tMax);
-	}
-
-	private void createParams() {
-		params = new SegmentParams(tMin, divisors, view);
-	}
-
-	private void initDiffs() {
-		params.diff = view.getOnScreenDiff(evalLeft, evalRight);
-		curve.evaluateCurve(tMin + divisors[divisors.length - 1], eval);
-		params.prevDiff = view.getOnScreenDiff(evalLeft, eval);
-	}
-
-	private void createInfo() {
-		info = new CurveSegmentInfo(view);
-	}
-
-	private GPoint plot() {
+	private void plot() {
 		if (plotBisectorAlgo()) {
-			return plotProblemInterval(params.left);
+			plotProblemInterval(left);
 		}
+	}
 
-		return labelPoint;
+	private void copy(double[] from, double[] to) {
+		for (int i = 0; i < dim; i++) {
+			to[i] = from[i];
+		}
+	}
+
+	private void push() {
+		stackDyad[top] = dyad;
+		stackDepth[top] = depth;
+		stackOnScreen[top] = onScreen;
+		int offset = top * dim;
+		for (int i = 0; i < dim; i++) {
+			stackEval[offset + i] = evalRight[i];
+		}
+		top++;
 	}
 
 	// Actual plotting algorithm:
@@ -185,44 +200,43 @@ public class CurveSegmentPlotter {
 	// to avoid multiple evaluations at the same position.
 	private boolean plotBisectorAlgo() {
 		do {
-			info.update(evalLeft, evalRight, params.diff, params.prevDiff, curve);
+			updateSegmentInfo();
 			// bisect interval as long as max bisection depth not reached & ...
-			if (curve instanceof GeoCurveCartesianND) {
-				curve.updateExpandedFunctions();
-			}
-			while (params.hasNotReachedMaxDepth()
-					&& info.hasNotReachedMinStep()
-					&& (info.isDistanceOrAngleInvalid() || params.isStepTooBig(maxParamStep))
-					&& params.isDiffZerosLimitNotReached()) {
+			while (depth < MAX_DEFINED_BISECTIONS
+					&& !reachedMinStep
+					&& (distanceOrAngleInvalid || divisors[depth] > maxParamStep)
+					&& countDiffZeros < MAX_ZERO_COUNT) {
+				push();
+				dyad = 2 * dyad - 1;
+				depth++;
+				t = tMin + dyad * divisors[depth];
 
-				// push stacks
-				stack.push(params.dyad, params.depth, onScreen, evalRight);
-				params.progress();
-
-				// evaluate curve for parameter t
-				curve.evaluateCurve(params.t, eval);
+				curve.evaluateCurve(t, eval);
 				onScreen = view.isOnView(eval);
 
-				if (isUndefined(eval) && hasNoSingularity(params.t, divisors[LENGTH - 1])) {
+				if (isUndefined(eval) && !isContinuousAround(t, divisors[LENGTH - 1])) {
 					return true;
 				}
 
-				evalRight = Cloner.clone(eval);
-				params.updateDiff(evalLeft, evalRight);
-				params.countDiffZeros = isDiffZero(params.diff) ? params.countDiffZeros + 1 : 0;
+				copy(eval, evalRight);
+				view.getOnScreenDiff(evalLeft, evalRight, diff);
+				countDiffZeros = DoubleUtil.isZero(diff[0]) && DoubleUtil.isZero(diff[1])
+						? countDiffZeros + 1 : 0;
 
-				info.update(evalLeft, evalRight, params.diff, params.prevDiff, curve);
+				updateSegmentInfo();
 			} // end of while-loop for interval bisections
 
-			drawSegment(params.t, params.left, info);
+			drawSegment();
 
 			// remember last point in general path
-			evalLeft = Cloner.clone(evalRight);
-			params.left = params.t;
+			copy(evalRight, evalLeft);
+			left = t;
 
 			// remember first point on screen for label position
 			if (onScreen && needLabelPos) {
-				calculateLabelPosition();
+				labelPoint = new GPoint((int) view.toScreenCoordXd(evalRight[0]),
+						(int) view.toScreenCoordYd(evalRight[1]));
+				needLabelPos = false;
 			}
 
 			/*
@@ -231,30 +245,81 @@ public class CurveSegmentPlotter {
 			 * is 2*i/(2^(d+1) = i/2^d !! So we've already calculated the
 			 * corresponding x and y values when we pushed.
 			 */
-
-			CurvePlotterStackItem item = stack.pop();
-			onScreen = item.onScreen;
-			evalRight = item.eval;
-			params.restoreFromStack(item);
-			params.updateDiff(evalLeft, evalRight);
-		} while (stack.hasItems()); // end of do-while loop for bisection stack
+			top--;
+			onScreen = stackOnScreen[top];
+			depth = stackDepth[top] + 1;
+			dyad = stackDyad[top] * 2;
+			int offset = top * dim;
+			for (int i = 0; i < dim; i++) {
+				evalRight[i] = stackEval[offset + i];
+				prevDiff[i] = diff[i];
+			}
+			t = tMin + dyad * divisors[depth];
+			view.getOnScreenDiff(evalLeft, evalRight, diff);
+		} while (top != 0); // end of do-while loop for bisection stack
 		gp.endPlot();
 		return false;
 	}
 
-	private boolean hasNoSingularity(double t, double interval) {
-		// check if c(t-eps) and c(t+eps) are both defined
-
-		return !isContinuousAround(curve, t, interval, view, eval);
+	private void updateSegmentInfo() {
+		offScreen = view.isSegmentOffView(evalLeft, evalRight);
+		reachedMinStep = Math.abs(diff[0]) < minDistX;
+		distanceOrAngleInvalid = !(offScreen || isDistanceOK())
+				|| !isAngleOK(offScreen ? MAX_BEND_OFF_SCREEN : MAX_BEND);
 	}
 
-	private boolean isCurveUndefinedAt(double x) {
-		curve.evaluateCurve(x, eval);
-		return isUndefined(eval);
+	/**
+	 * Returns whether the pixel distance from the last point is smaller than
+	 * MAX_PIXEL_DISTANCE in all directions.
+	 */
+	private boolean isDistanceOK() {
+		for (int i = 0; i < dim; i++) {
+			if (Math.abs(diff[i]) > MAX_PIXEL_DISTANCE) {
+				return false;
+			}
+		}
+		return true;
 	}
 
-	protected void drawSegment(double t, double left, CurveSegmentInfo info) {
-		if (isLineTo(t, left, info)) {
+	/**
+	 * Returns whether the angle between prevDiff and diff is smaller than the bend,
+	 * where bend = tan(angle).
+	 */
+	private boolean isAngleOK(double bend) {
+		// |v| * |w| * sin(alpha) = |det(v, w)|
+		// cos(alpha) = v . w / (|v| * |w|)
+		// tan(alpha) = sin(alpha) / cos(alpha)
+		// tan(alpha) = |det(v, w)| / v . w
+
+		// small angle: tan(alpha) < MAX_BEND
+		// |det(v, w)| / v . w < MAX_BEND
+		// |det(v, w)| < MAX_BEND * (v . w)
+		double[] v = prevDiff;
+		double[] w = diff;
+		double innerProduct = v[0] * w[0] + v[1] * w[1];
+		if (dim > 2) {
+			innerProduct += v[2] * w[2];
+		}
+		if (isUndefined(innerProduct)) {
+			return true;
+		} else if (innerProduct <= 0) {
+			// angle >= 90 degrees
+			return false;
+		}
+		double det;
+		if (dim < 3) {
+			det = Math.abs(v[0] * w[1] - v[1] * w[0]);
+		} else {
+			double d1 = v[0] * w[1] - v[1] * w[0];
+			double d2 = v[1] * w[2] - v[2] * w[1];
+			double d3 = v[2] * w[0] - v[0] * w[2];
+			det = Math.sqrt(d1 * d1 + d2 * d2 + d3 * d3);
+		}
+		return det < bend * innerProduct;
+	}
+
+	private void drawSegment() {
+		if (isLineTo()) {
 			// handle previous moveTo first
 			if (nextLineToNeedsMoveToFirst) {
 				gp.moveTo(move);
@@ -266,44 +331,24 @@ public class CurveSegmentPlotter {
 		} else {
 			// moveTo: remember moveTo position to avoid multiple moveTo
 			// operations
-			move = Cloner.clone(evalRight);
+			copy(evalRight, move);
 			nextLineToNeedsMoveToFirst = true;
 		}
 	}
 
-	protected void calculateLabelPosition() {
-		labelPoint = labelPositionCalculator.calculate(evalRight[0], evalRight[1]);
-		needLabelPos = false;
-	}
-
-	private boolean isLineTo(double t, double left, CurveSegmentInfo info) {
-		boolean lineTo = true;
-		// TODO
+	private boolean isLineTo() {
 		if (moveToAllowed == Gap.MOVE_TO) {
-			if (info.isOffScreen()) {
+			if (offScreen) {
 				// don't draw segments that are off screen
-				lineTo = false;
-			} else if (info.isDistanceOrAngleInvalid()) {
+				return false;
+			} else if (distanceOrAngleInvalid) {
 				// check for DISCONTINUITY
-				lineTo = isContinuous(curve, left, t, MAX_CONTINUITY_BISECTIONS);
+				return isContinuous(curve, left, t, MAX_CONTINUITY_BISECTIONS);
 			}
 		} else if (moveToAllowed == Gap.CORNER) {
 			gp.corner(evalRight);
 		}
-		return lineTo;
-	}
-
-	private static boolean isDiffZero(double[] diff) {
-		return DoubleUtil.isZero(diff[0]) && DoubleUtil.isZero(diff[1]);
-	}
-
-	private static double[] createDivisors(double tMin, double tMax) {
-		double[] divisors = new double[LENGTH];
-		divisors[0] = tMax - tMin;
-		for (int i = 1; i < LENGTH; i++) {
-			divisors[i] = divisors[i - 1] / 2;
-		}
-		return divisors;
+		return true;
 	}
 
 	/**
@@ -328,54 +373,28 @@ public class CurveSegmentPlotter {
 	/**
 	 * Plots an interval where f(tMin) or f(tMax) is undefined.
 	 */
-	private GPoint plotProblemInterval(double left) {
+	private void plotProblemInterval(double left) {
 		boolean calcLabel = needLabelPos;
 		// stop recursion for too many intervals
 		if (intervalDepth > MAX_PROBLEM_BISECTIONS || left == tMax) {
-			return labelPoint;
+			return;
 		}
-
-		GPoint labelPointMin, labelPointMax;
 
 		// plot interval for t in [tMin, tMax]
 		// If we run into a problem, i.e. an undefined point f(t), we bisect
 		// the interval and plot both intervals [t, (t+tMax)/2] and [(t+tMax)/2],
 		// tMax]
 		double splitParam = (left + tMax) / 2.0;
+		double minStart = left;
+		double minEnd = splitParam;
+		double maxStart = splitParam;
+		double maxEnd = tMax;
 
 		// make sure that we first bisect down to intervals with a max size of
 		// maxParamStep
 		boolean intervalsTooLarge = Math.abs(left - splitParam) > maxParamStep;
-		if (intervalsTooLarge) {
-			// bisect interval
-			calcLabel = calcLabel && labelPoint == null;
-			CurveSegmentPlotter plotterMin = new CurveSegmentPlotter(
-					curve,
-					left,
-					splitParam,
-					intervalDepth + 1,
-					maxParamStep,
-					view,
-					gp,
-					calcLabel,
-					moveToAllowed);
-			labelPointMin = plotterMin.getLabelPoint();
-
-			// plot interval [(tMin+tMax)/2, tMax]
-			calcLabel = calcLabel && labelPointMin == null;
-			CurveSegmentPlotter plotterMax = new CurveSegmentPlotter(
-					curve,
-					splitParam,
-					tMax,
-					intervalDepth + 1,
-					maxParamStep,
-					view,
-					gp,
-					calcLabel,
-					moveToAllowed);
-
-			labelPointMax = plotterMax.getLabelPoint();
-		} else {
+		double[] borders = null;
+		if (!intervalsTooLarge) {
 			// look at the end points of the intervals [tMin, (tMin+tMax)/2] and
 			// [(tMin+tMax)/2, tMax]
 			// and try to get a defined interval. This is important if one of
@@ -383,68 +402,47 @@ public class CurveSegmentPlotter {
 			// this
 			// case we want to find a smaller interval where both borders are
 			// defined
-
-			// plot interval [tMin, (tMin+tMax)/2]
-			double[] borders = new double[2];
+			borders = new double[2];
 			getDefinedInterval(curve, left, splitParam, borders);
-			calcLabel = calcLabel && labelPoint == null;
-			CurveSegmentPlotter plotterMin = new CurveSegmentPlotter(
-					curve,
-					borders[0],
-					borders[1],
-					intervalDepth + 1,
-					maxParamStep,
-					view,
-					gp,
-					calcLabel,
-					moveToAllowed);
-			labelPointMin = plotterMin.getLabelPoint();
-
-			// plot interval [(tMin+tMax)/2, tMax]
-			getDefinedInterval(curve, splitParam, tMax, borders);
-			calcLabel = calcLabel && labelPointMin == null;
-			CurveSegmentPlotter plotterMax = new CurveSegmentPlotter(
-					curve,
-					borders[0],
-					borders[1],
-					intervalDepth + 1,
-					maxParamStep,
-					view,
-					gp,
-					calcLabel,
-					moveToAllowed);
-			labelPointMax = plotterMax.getLabelPoint();
+			minStart = borders[0];
+			minEnd = borders[1];
 		}
+		calcLabel = calcLabel && labelPoint == null;
+		GPoint labelPointMin = new CurveSegmentPlotter(curve, minStart, minEnd,
+				intervalDepth + 1, maxParamStep, view, gp, calcLabel, moveToAllowed).getLabelPoint();
+
+		if (borders != null) {
+			getDefinedInterval(curve, splitParam, tMax, borders);
+			maxStart = borders[0];
+			maxEnd = borders[1];
+		}
+		calcLabel = calcLabel && labelPointMin == null;
+		GPoint labelPointMax = new CurveSegmentPlotter(curve, maxStart, maxEnd,
+				intervalDepth + 1, maxParamStep, view, gp, calcLabel, moveToAllowed).getLabelPoint();
 
 		if (labelPoint == null) {
-			if (labelPointMin != null) {
-				labelPoint = labelPointMin;
-			} else if (labelPointMax != null) {
-				labelPoint = labelPointMax;
-			}
+			labelPoint = labelPointMin != null ? labelPointMin : labelPointMax;
 		}
-		return labelPoint;
 	}
 
 	/**
 	 * Returns whether curve is defined for c(t-eps) and c(t + eps).
 	 */
-	private static boolean isContinuousAround(
-			CurveEvaluable curve, double t, double eps, EuclidianView view, double[] evalT) {
-		// check if c(t) is undefined
-		double[] eval = curve.newDoubleArray();
+	private boolean isContinuousAround(double t, double eps) {
+		double[] around = curve.newDoubleArray();
 
 		// c(t + eps)
-		curve.evaluateCurve(t + eps, eval);
-		double oldy = eval[1];
-		if (!isUndefined(eval)) {
+		curve.evaluateCurve(t + eps, around);
+		double oldy = around[1];
+		if (!isUndefined(around)) {
 			// c(t - eps)
-			curve.evaluateCurve(t - eps, eval);
-			if (!isUndefined(eval)) {
+			curve.evaluateCurve(t - eps, around);
+			if (!isUndefined(around)) {
 				// SINGULARITY for functions: c(t) undef, c(t-eps) and c(t+eps)
 				// defined and close
-				if (curve.isFunctionInX() && Math.abs(oldy - eval[1]) * view.getYscale() < MAX_JUMP) {
-					evalT[1] = (oldy + eval[1]) * 0.5;
+				if (curve.isFunctionInX()
+						&& Math.abs(oldy - around[1]) * view.getYscale() < MAX_JUMP) {
+					eval[1] = (oldy + around[1]) * 0.5;
 					return true;
 				}
 				// SINGULARITY for curves: c(t) undef, c(t-eps) and c(t+eps)

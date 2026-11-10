@@ -42,6 +42,9 @@ import jsinterop.base.Js;
 public final class GeoGebraElement {
 
 	private final Element el;
+	// computed scale, NaN until needed and after the window size changed
+	private double computedScaleX = Double.NaN;
+	private boolean listensToResize;
 
 	/**
 	 * @param element
@@ -220,7 +223,15 @@ public final class GeoGebraElement {
 	 */
 	public double readScaleX() {
 		if ("".equals(el.getAttribute("data-scalex"))) {
-			return envScale("x");
+			if (Double.isNaN(computedScaleX)) {
+				if (!listensToResize) {
+					listensToResize = true;
+					DomGlobal.window.addEventListener("resize",
+							event -> computedScaleX = Double.NaN);
+				}
+				computedScaleX = envScale("x");
+			}
+			return computedScaleX;
 		}
 		return Double.parseDouble(el.getAttribute("data-scalex"));
 	}

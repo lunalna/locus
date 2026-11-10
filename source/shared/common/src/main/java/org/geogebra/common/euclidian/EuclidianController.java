@@ -441,7 +441,6 @@ public abstract class EuclidianController implements SpecialPointsListener {
 	private ModeMacro modeMacro;
 	private int numOfTargets = 0;
 
-	private final SnapController snapController = new SnapController();
 	private final ArrayList<GeoElement> splitPartsToRemove = new ArrayList<>();
 
 	// used for focused selection in groups and embed elements in groups
@@ -7482,7 +7481,7 @@ public abstract class EuclidianController implements SpecialPointsListener {
 	/**
 	 * @return true, if the freehand mode is prepared (e.g. polygons, circle)
 	 */
-	protected boolean freehandModePrepared() {
+	public boolean freehandModePrepared() {
 		return freehandModePrepared;
 	}
 
@@ -7963,10 +7962,8 @@ public abstract class EuclidianController implements SpecialPointsListener {
 	}
 
 	protected void snapMoveView() {
-		snapController.touchMoved(mouseLoc);
-
-		GPoint delta = snapController.getDeltaPoint();
-		view.setCoordSystemFromMouseMove(delta.x, delta.y, MoveMode.VIEW);
+		view.setCoordSystemFromMouseMove(mouseLoc.x - startLoc.x, mouseLoc.y - startLoc.y,
+				MoveMode.VIEW);
 	}
 
 	protected void scaleXAxis() {
@@ -8344,7 +8341,8 @@ public abstract class EuclidianController implements SpecialPointsListener {
 	}
 
 	protected boolean shouldCancelDrag() {
-		if (System.currentTimeMillis() < draggingDelay + lastMousePressedTime) {
+		if (moveMode != MoveMode.VIEW
+				&& System.currentTimeMillis() < draggingDelay + lastMousePressedTime) {
 			// we wait at least DRAGGING_DELAY (100ms) before starting drag
 			// used for interactive boards
 			return !EuclidianView.isPenMode(mode);
@@ -8368,7 +8366,9 @@ public abstract class EuclidianController implements SpecialPointsListener {
 			return;
 		}
 
-		app.hideKeyboard();
+		if (!draggingOccurred) {
+			app.hideKeyboard();
+		}
 
 		if (shouldHideDynamicStyleBar(event)) {
 			this.hideDynamicStylebar();
@@ -8913,7 +8913,6 @@ public abstract class EuclidianController implements SpecialPointsListener {
 		}
 
 		startLoc = mouseLoc;
-		snapController.touchStarted(startLoc);
 
 		setDragCursorIfMoveView();
 

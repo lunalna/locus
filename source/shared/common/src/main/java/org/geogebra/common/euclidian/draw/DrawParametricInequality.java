@@ -119,13 +119,13 @@ class DrawParametricInequality extends SetDrawable implements MatchBorder {
 			if (paramIneq.isAboveBorder()) {
 				gp.moveTo(view.getWidth() + 10, axEv);
 				labelPos = CurvePlotter.plotCurve(border, ax, bx, view, gp, true, Gap.RESET_XMAX);
-				gp.lineTo(view.getWidth() + 10, gp.getCurrentPoint().getY());
+				gp.lineTo(view.getWidth() + 10, gp.getCurrentY());
 				gp.lineTo(view.getWidth() + 10, axEv);
 				gp.closePath();
 			} else {
 				gp.moveTo(-10, axEv);
 				labelPos = CurvePlotter.plotCurve(border, ax, bx, view, gp, true, Gap.RESET_XMIN);
-				gp.lineTo(-10, gp.getCurrentPoint().getY());
+				gp.lineTo(-10, gp.getCurrentY());
 				gp.lineTo(-10, axEv);
 				gp.closePath();
 			}
@@ -136,13 +136,13 @@ class DrawParametricInequality extends SetDrawable implements MatchBorder {
 			if (paramIneq.isAboveBorder()) {
 				gp.moveTo(axEv, -10);
 				labelPos = CurvePlotter.plotCurve(border, ax, bx, view, gp, true, Gap.RESET_YMIN);
-				gp.lineTo(gp.getCurrentPoint().getX(), -10);
+				gp.lineTo(gp.getCurrentX(), -10);
 				gp.lineTo(axEv, -10);
 				gp.closePath();
 			} else {
 				gp.moveTo(axEv, view.getHeight() + 10);
 				labelPos = CurvePlotter.plotCurve(border, ax, bx, view, gp, true, Gap.RESET_YMAX);
-				gp.lineTo(gp.getCurrentPoint().getX(), view.getHeight() + 10);
+				gp.lineTo(gp.getCurrentX(), view.getHeight() + 10);
 				gp.lineTo(axEv, view.getHeight() + 10);
 				gp.closePath();
 			}

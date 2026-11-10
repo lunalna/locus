@@ -18,8 +18,11 @@ const style = document.createElement('style');
 style.textContent = css;
 const container = document.createElement('div');
 root.append(style, container);
-// Keeps the app's keyboard shortcuts from reacting while the modal is used; Escape still reaches the popups' document listener.
-host.addEventListener('keydown', (event) => event.key !== 'Escape' && event.stopPropagation());
+// Keeps the app's keyboard shortcuts from reacting while the modal is used. The app stops Escape at the body, so it is handed to the document, where the popups and the modal listen.
+host.addEventListener('keydown', (event) => {
+    event.stopPropagation();
+    if (event.key === 'Escape') document.dispatchEvent(new KeyboardEvent('keydown', event));
+});
 document.body.append(host);
 mount(Settings, { target: container, props: { modal, container } });
 

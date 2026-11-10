@@ -243,10 +243,6 @@ fn set_disabled(app: &AppHandle, id: &str, disable: bool) -> Result<(), String> 
     resourcepack::save_settings(app, &settings)
 }
 
-fn name(app: &AppHandle, id: &str) -> String {
-    plugin(app, id).map_or(id.into(), |plugin| plugin.name().into())
-}
-
 // Starts the enabled plugins that may run and stops the others.
 pub fn sync(app: &AppHandle) {
     let disabled = disabled(app);
@@ -401,7 +397,6 @@ fn open(app: &AppHandle, id: &str) -> Result<(), String> {
     }
     window::open(app, &plugin, if dimmed { DIMMED } else { 1.0 })?;
     emit(app, id, &json!({"type": "show"}));
-    exam::record(app, format!("{} opened.", plugin.name()));
     Ok(())
 }
 
@@ -410,7 +405,6 @@ pub fn hide(app: &AppHandle, id: &str) -> Result<(), String> {
     if window::visible(app, &label) {
         emit(app, id, &json!({"type": "hide"}));
         window::hide(app, &label)?;
-        exam::record(app, format!("{} closed.", name(app, id)));
     }
     Ok(())
 }
@@ -439,10 +433,6 @@ fn lock(app: AppHandle, id: String) {
     }) else {
         return;
     };
-    exam::record(
-        &app,
-        format!("{} {}.", name(&app, &id), if locked { "locked" } else { "unlocked" }),
-    );
     if locked {
         let _ = hide(&app, &id);
     } else {

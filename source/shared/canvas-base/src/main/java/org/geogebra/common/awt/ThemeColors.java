@@ -14,6 +14,7 @@ public final class ThemeColors {
 
 	private static int background = -1;
 	private static int foreground;
+	private static int version;
 	private static final Set<Integer> kept = new HashSet<>();
 	private static Map<Integer, Integer> accents = new HashMap<>();
 	private static final Map<Integer, Integer> cache = new HashMap<>();
@@ -29,6 +30,14 @@ public final class ThemeColors {
 		background = backgroundRgb;
 		foreground = foregroundRgb;
 		cache.clear();
+		version++;
+	}
+
+	/**
+	 * @return counter that changes whenever the color mapping changes
+	 */
+	public static int getVersion() {
+		return version;
 	}
 
 	/**
@@ -48,6 +57,7 @@ public final class ThemeColors {
 		kept.clear();
 		kept.addAll(keptRgb);
 		cache.clear();
+		version++;
 	}
 
 	/**

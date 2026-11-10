@@ -85,19 +85,17 @@ pub fn status(app: &AppHandle, plugin: &str, text: Option<String>) -> Result<(),
     Ok(())
 }
 
-pub fn allow_assistant(app: &AppHandle, allowed: bool, plugin: &str) -> Result<(), String> {
+pub fn allow_assistant(app: &AppHandle, allowed: bool) -> Result<(), String> {
     running(app)?;
     state(app).assistant = allowed;
-    record(app, format!("AI assistant {} by {plugin}.", if allowed { "allowed" } else { "blocked" }));
     crate::assistant::refresh(app);
     Ok(())
 }
 
 // The page lifts or restores the lockdown, and stops counting leaving the window as cheating.
-pub fn allow_leaving(app: &AppHandle, allowed: bool, plugin: &str) -> Result<(), String> {
+pub fn allow_leaving(app: &AppHandle, allowed: bool) -> Result<(), String> {
     running(app)?;
     state(app).leaving = allowed;
     eval(app, format!("window.ggbExamAllowLeaving && window.ggbExamAllowLeaving({allowed})"));
-    record(app, format!("Leaving the window {} by {plugin}.", if allowed { "allowed" } else { "blocked" }));
     Ok(())
 }

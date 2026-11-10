@@ -43,17 +43,8 @@ fn allows(url: &Url) -> bool {
     matches!(url.scheme(), "https" | "http") && url.username().is_empty() && url.password().is_none()
 }
 
-// Navigations in plugin websites; during an exam they are logged for the teacher.
-pub fn navigation(app: &AppHandle, url: &Url) -> bool {
-    if url.as_str() == "about:blank" {
-        return true;
-    }
-    let allowed = allows(url);
-    crate::exam::record(
-        app,
-        format!("{}: {url}", if allowed { "Navigation allowed" } else { "Navigation blocked" }),
-    );
-    allowed
+pub fn navigation(url: &Url) -> bool {
+    url.as_str() == "about:blank" || allows(url)
 }
 
 #[cfg(test)]

@@ -4106,6 +4106,14 @@ public abstract class EuclidianView3D extends EuclidianView
 	}
 
 	@Override
+	public void getOnScreenDiff(double[] p1, double[] p2, double[] ret) {
+		super.getOnScreenDiff(p1, p2, ret);
+		if (ret.length > 2) {
+			ret[2] = (p2[2] - p1[2]) * getZscale();
+		}
+	}
+
+	@Override
 	public boolean isSegmentOffView(double[] p1, double[] p2) {
 		if (super.isSegmentOffView(p1, p2)) {
 			return true;

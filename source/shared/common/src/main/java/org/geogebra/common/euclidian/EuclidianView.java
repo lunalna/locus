@@ -329,6 +329,7 @@ public abstract class EuclidianView
 	protected boolean[] drawBorderAxes;
 
 	private boolean needsAllDrawablesUpdate;
+	private boolean viewUpdatePending;
 	private boolean restrictGraphSelectionForFunctions;
 	protected boolean batchUpdate;
 	/** kernel */
@@ -1281,6 +1282,19 @@ public abstract class EuclidianView
 	}
 
 	/**
+	 * @param p1
+	 *            first point
+	 * @param p2
+	 *            second point
+	 * @param ret
+	 *            output: (p2-p1) vector in screen coordinates
+	 */
+	public void getOnScreenDiff(double[] p1, double[] p2, double[] ret) {
+		ret[0] = (p2[0] - p1[0]) * getXscale();
+		ret[1] = (p2[1] - p1[1]) * getYscale();
+	}
+
+	/**
 	 * Performs a quick test whether the segment p1 to p2 is off view.
 	 *
 	 * @param p1
@@ -1857,6 +1871,7 @@ public abstract class EuclidianView
 	}
 
 	public DrawableList getAllDrawableList() {
+		updatePendingDrawables();
 		return allDrawableList;
 	}
 
@@ -1877,6 +1892,12 @@ public abstract class EuclidianView
 			this.needsAllDrawablesUpdate = true;
 			return;
 		}
+		if (repaint && defersViewUpdates()) {
+			viewUpdatePending = true;
+			repaint();
+			return;
+		}
+		viewUpdatePending = false;
 
 		isCrashlyticsLoggingEnabled = true;
 		for (Drawable d : allDrawableList) {
@@ -1899,6 +1920,23 @@ public abstract class EuclidianView
 		// show the dynamic style bar again (if was visible) at the right location
 		if (dynamicStyleBar != null && dynamicStyleBar.isVisible()) {
 			dynamicStyleBar.updateStyleBar();
+		}
+	}
+
+	/**
+	 * @return whether drawables are updated for a changed coord system only once before
+	 *         they are painted or hit tested, instead of on every change
+	 */
+	protected boolean defersViewUpdates() {
+		return false;
+	}
+
+	/**
+	 * Update all drawables now if the coord system changed since they were last updated.
+	 */
+	public final void updatePendingDrawables() {
+		if (viewUpdatePending) {
+			updateAllDrawablesForView(false);
 		}
 	}
 
@@ -2307,6 +2345,7 @@ public abstract class EuclidianView
 	 * @return whether textfield was clicked
 	 */
 	public boolean textfieldClicked(int x, int y, PointerEventType type) {
+		updatePendingDrawables();
 		if (getEuclidianController().isDraggingBeyondThreshold()) {
 			return false;
 		}
@@ -2339,6 +2378,7 @@ public abstract class EuclidianView
 
 	@Override
 	public void setHits(GPoint p, PointerEventType type) {
+		updatePendingDrawables();
 		hitDetector.setHits(p, type);
 	}
 
@@ -2350,6 +2390,7 @@ public abstract class EuclidianView
 		if (!getApplication().isLabelDragsEnabled()) {
 			return null;
 		}
+		updatePendingDrawables();
 		for (Drawable d : allDrawableList) {
 			if (d.hitLabel(p.x, p.y)) {
 				GeoElement geo = d.getGeoElement();
@@ -2371,6 +2412,7 @@ public abstract class EuclidianView
 	 * @return hit drawable
 	 */
 	public Drawable getBoundingBoxHandlerHit(GPoint p, PointerEventType type) {
+		updatePendingDrawables();
 		if (p == null) {
 			return null;
 		}
@@ -3597,6 +3639,7 @@ public abstract class EuclidianView
 	 *            graphics
 	 */
 	private void drawGeometricObjects(GGraphics2D g2) {
+		updatePendingDrawables();
 		// only draw drawables we need
 		allDrawableList.drawAll(g2);
 		if (getEuclidianController().isMultiSelection()) {
@@ -3770,6 +3813,7 @@ public abstract class EuclidianView
 	 */
 	public final void updateBackgroundImage() {
 		tracing = false;
+		updatePendingDrawables();
 		if (bgGraphics != null) {
 			drawBackgroundWithImages(bgGraphics, false);
 		}
@@ -4444,6 +4488,7 @@ public abstract class EuclidianView
 	 * @return bounds of this view
 	 */
 	public GRectangle getBounds() {
+		updatePendingDrawables();
 		GRectangle result = null;
 
 		for (Drawable d : allDrawableList) {

@@ -315,6 +315,11 @@ public class EuclidianViewW extends EuclidianView implements EuclidianViewWInter
 	}
 
 	@Override
+	protected boolean defersViewUpdates() {
+		return true;
+	}
+
+	@Override
 	public void drawObjects(GGraphics2D g2) {
 		if (!app.isExporting()) {
 			MultiuserManager.INSTANCE.paintInteractionBackgrounds(this, g2);

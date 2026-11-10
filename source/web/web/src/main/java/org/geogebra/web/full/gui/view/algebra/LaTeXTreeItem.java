@@ -228,7 +228,7 @@ public class LaTeXTreeItem extends RadioTreeItem {
 
 	@Override
 	protected void resetCanvas() {
-		canvas = null;
+		super.resetCanvas();
 		mf = null;
 	}
 

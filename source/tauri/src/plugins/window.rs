@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager, Url, Webview, WebviewUrl};
 use tauri::{LogicalPosition, LogicalSize};
 
 use super::{emit, own_url, publish, with, Plugin};
-use crate::{browser, exam};
+use crate::browser;
 
 // Pages may show their own files, and a blank page once stopped on iPadOS.
 fn page_navigation(id: &str) -> impl Fn(&Url) -> bool + Send + 'static {
@@ -176,8 +176,8 @@ fn view_filter(app: &AppHandle, plugin: &str) -> String {
 // Desktop views are child webviews and iPadOS views are webview windows, with the same settings.
 macro_rules! view_settings {
     ($builder:expr, $app:expr, $plugin:expr) => {{
-        let (nav_app, popup_app, load_app, title_app, download_app) =
-            ($app.clone(), $app.clone(), $app.clone(), $app.clone(), $app.clone());
+        let (nav_app, popup_app, load_app, title_app) =
+            ($app.clone(), $app.clone(), $app.clone(), $app.clone());
         let (nav_id, popup_id, load_id, title_id) =
             ($plugin.to_string(), $plugin.to_string(), $plugin.to_string(), $plugin.to_string());
         $builder
@@ -185,7 +185,7 @@ macro_rules! view_settings {
             .transparent(true)
             .devtools(false)
             .on_navigation(move |url| {
-                let allowed = browser::navigation(&nav_app, url);
+                let allowed = browser::navigation(url);
                 if !allowed && url.as_str() != "about:blank" {
                     emit(&nav_app, &nav_id, &json!({"type": "blocked", "url": url.as_str()}));
                 }
@@ -223,22 +223,16 @@ macro_rules! view_settings {
                     if &url != event.url() {
                         return;
                     }
-                    exam::record(&load_app, format!("Page loaded: {url}"));
                     let _ = view.eval(filter_script(&view_filter(&load_app, &load_id)));
                     publish(&load_app, &load_id);
                 }
             })
-            .on_download(move |_, event| {
-                if let tauri::webview::DownloadEvent::Requested { url, .. } = event {
-                    exam::record(&download_app, format!("Download blocked: {url}"));
-                }
-                false
-            })
+            .on_download(|_, _| false)
     }};
 }
 
 pub fn create_view(app: &AppHandle, info: &Plugin, url: Url) -> Result<String, String> {
-    if !browser::navigation(app, &url) {
+    if !browser::navigation(&url) {
         return Err("This site is not allowed in this exam.".into());
     }
     let plugin = info.id.as_str();

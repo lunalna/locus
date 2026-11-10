@@ -407,6 +407,12 @@ public interface MaterialDesignResources extends ClientBundle {
 	@Source("org/geogebra/common/icons/svg/web/matDesignIcons/av/plusMenu/add.svg")
 	SVGResource add_black();
 
+	@Source("org/geogebra/common/icons/svg/web/matDesignIcons/av/plusMenu/sparkles.svg")
+	SVGResource ai_prompt();
+
+	@Source("org/geogebra/common/icons/svg/web/matDesignIcons/av/plusMenu/loader.svg")
+	SVGResource ai_busy();
+
 	@Source("org/geogebra/common/icons/svg/web/matDesignIcons/av/minus.svg")
 	SVGResource minus_black();
 

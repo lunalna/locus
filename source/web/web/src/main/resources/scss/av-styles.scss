@@ -159,6 +159,16 @@
 		}
 	}
 
+	.marblePanel.plus.busy img {
+		animation: promptSpin 1s linear infinite;
+	}
+
+	@keyframes promptSpin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
 	.marblePanel.plus :hover{
 		img {
 			opacity: 1;

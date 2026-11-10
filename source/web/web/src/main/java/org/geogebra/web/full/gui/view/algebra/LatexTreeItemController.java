@@ -97,6 +97,10 @@ public class LatexTreeItemController extends RadioTreeItemController
 
 	@Override
 	public void onEnter(final boolean keepFocus) {
+		// a request for the AI only runs on Enter, not when the input loses focus
+		if (item.isPrompt()) {
+			return;
+		}
 		if (isEditing()) {
 			dispatchEditEvent(EventType.EDITOR_STOP);
 		}
@@ -149,6 +153,10 @@ public class LatexTreeItemController extends RadioTreeItemController
 	public void onEnter() {
 		if (isSuggesting()) {
 			autocomplete.needsEnterForSuggestion();
+			return;
+		}
+		if (item.isPrompt()) {
+			item.runPrompt();
 			return;
 		}
 		// make sure editing flag is up to date e.g. after failed redefine

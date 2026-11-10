@@ -1,3 +1,4 @@
+import { invoke } from '$backend';
 import { mount } from 'svelte';
 import katex from 'katex/dist/katex.min.css?inline';
 import { assistant, loadHistory, loadSettings } from '../lib/assistant.svelte.js';
@@ -31,10 +32,19 @@ pending.forEach(attach);
 window.locusAssistantRefresh = () =>
     loadSettings().then((settings) => {
         window.locusAssistantEnabled = settings.available && settings.sidebar;
+        // "?" at the start of the Algebra input asks the AI.
+        window.locusPromptEnabled = settings.available && settings.prompt;
         window.locusAssistantUpdate?.();
     });
 window.locusAssistantRefresh();
 loadHistory();
+
+// Called by the app with a request typed into the Algebra input after "?".
+window.locusPrompt = (text, done) =>
+    invoke('assistant_prompt', { text }).then(
+        (reply) => done(null, reply),
+        (error) => done(String(error), null),
+    );
 
 // Called by the app when an exam starts or ends, so chats do not carry across.
 window.locusAssistantReset = () => {

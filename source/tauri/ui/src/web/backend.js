@@ -10,6 +10,8 @@ const commands = {
     assistant_send: assistant.send,
     assistant_history: assistant.history,
     assistant_models: assistant.models,
+    assistant_provider_add: assistant.addProvider,
+    assistant_prompt: assistant.prompt,
     library_list: library.list,
     library_activate: library.activate,
     library_remove: library.remove,

@@ -1,5 +1,6 @@
 package org.geogebra.web.html5.euclidian;
 
+import org.geogebra.common.euclidian.plot.CompiledCurve;
 import org.geogebra.common.kernel.Kernel;
 import org.geogebra.common.kernel.StringTemplate;
 import org.geogebra.common.kernel.arithmetic.BooleanValue;
@@ -13,6 +14,7 @@ import org.geogebra.common.kernel.arithmetic.MinusOne;
 import org.geogebra.common.kernel.arithmetic.MyList;
 import org.geogebra.common.kernel.arithmetic.MyNumberPair;
 import org.geogebra.common.kernel.arithmetic.NumberValue;
+import org.geogebra.common.kernel.geos.GeoCurveCartesian;
 import org.geogebra.common.kernel.geos.GeoFunction;
 import org.geogebra.common.plugin.Operation;
 import org.geogebra.common.util.DoubleUtil;
@@ -47,6 +49,11 @@ public final class JsFunctionCompiler {
 		double apply(double x);
 	}
 
+	@JsFunction
+	private interface JsCurveFunction {
+		void apply(double x, double[] out);
+	}
+
 	private JsFunctionCompiler(FunctionVariable variable) {
 		this.variable = variable;
 	}
@@ -67,15 +74,45 @@ public final class JsFunctionCompiler {
 		} catch (RuntimeException e) {
 			return null;
 		}
-		StringBuilder source = new StringBuilder(HELPERS).append("return function(x){");
-		for (int i = 0; i < compiler.temps; i++) {
+		JsRealFunction compiled = Js.uncheckedCast(compiler.build("x", "return " + expression));
+		return compiled::apply;
+	}
+
+	/**
+	 * @param curve parametric curve
+	 * @return compiled curve, or null if it uses something the compiler does not support
+	 */
+	public static CompiledCurve.Evaluator compile(GeoCurveCartesian curve) {
+		if (!curve.isDefined()) {
+			return null;
+		}
+		JsFunctionCompiler compiler = new JsFunctionCompiler(null);
+		StringBuilder body = new StringBuilder();
+		try {
+			for (int i = 0; i < 2; i++) {
+				Function fun = curve.getFun(i);
+				if (fun.getClass() != Function.class || fun.isBooleanFunction()) {
+					return null;
+				}
+				compiler.variable = fun.getFunctionVariable();
+				body.append("o[").append(i).append("]=").append(compiler.code(fun.getExpression()))
+						.append(';');
+			}
+		} catch (RuntimeException e) {
+			return null;
+		}
+		JsCurveFunction compiled = Js.uncheckedCast(compiler.build("x,o", body.toString()));
+		return compiled::apply;
+	}
+
+	private Object build(String parameters, String body) {
+		StringBuilder source = new StringBuilder(HELPERS).append("return function(")
+				.append(parameters).append("){");
+		for (int i = 0; i < temps; i++) {
 			source.append(i == 0 ? "var " : ",").append('t').append(i);
 		}
-		source.append(compiler.temps > 0 ? ";" : "").append("return ").append(expression)
-				.append("}");
-		JsRealFunction compiled = Js.uncheckedCast(
-				new elemental2.core.Function(source.toString()).call());
-		return compiled::apply;
+		source.append(temps > 0 ? ";" : "").append(body).append("}");
+		return new elemental2.core.Function(source.toString()).call();
 	}
 
 	// subclasses of Function evaluate something else than their expression

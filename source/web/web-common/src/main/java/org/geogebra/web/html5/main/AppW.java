@@ -39,6 +39,7 @@ import org.geogebra.common.euclidian.EmbedManager;
 import org.geogebra.common.euclidian.EuclidianConstants;
 import org.geogebra.common.euclidian.EuclidianController;
 import org.geogebra.common.euclidian.EuclidianView;
+import org.geogebra.common.euclidian.plot.CompiledCurve;
 import org.geogebra.common.euclidian.plot.FunctionPlotter;
 import org.geogebra.common.export.pstricks.GeoGebraExport;
 import org.geogebra.common.export.pstricks.GeoGebraToAsymptote;
@@ -312,6 +313,7 @@ public abstract class AppW extends App implements SetLabels, HasLanguage {
 					key -> ExternalUrls.set(key, GeoGebraGlobal.resourcePackUrls.get(key)));
 		}
 		FunctionPlotter.compiler = JsFunctionCompiler::compile;
+		CompiledCurve.compiler = JsFunctionCompiler::compile;
 		if (GeoGebraGlobal.locusPerformance != null) {
 			FunctionPlotter.findHiddenPoles =
 					GeoGebraGlobal.locusPerformance.get("asymptotes") != 0;

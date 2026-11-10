@@ -15,6 +15,9 @@ const MAX_STEPS: usize = 20;
 const SYSTEM: &str = "You are an AI assistant that can help the user with using Locus, a math app, and with other excercises. \
 Answer concisely. \
 Use Markdown, and write math in LaTeX between $...$ or $$...$$.";
+const PROMPT: &str = "The user typed this request into the Algebra input instead of a command. \
+Carry it out with the tools, without asking questions. \
+Then reply with one short plain sentence without Markdown or LaTeX, or with the answer if it was a question.";
 
 // A conversation and the events shown for it, so a reloaded page can show it again.
 #[derive(Default)]
@@ -47,17 +50,32 @@ fn provider(saved: &Value) -> &'static Provider {
     providers::find(saved["provider"].as_str().unwrap_or_default()).unwrap_or(&PROVIDERS[0])
 }
 
+// Providers are only kept once the user added them, with their key and URL.
+fn added(saved: &Value, provider: &Provider) -> bool {
+    saved["providers"][provider.id].is_object()
+}
+
 fn key<'a>(saved: &'a Value, provider: &Provider) -> &'a str {
-    saved["keys"][provider.id].as_str().unwrap_or_default()
+    saved["providers"][provider.id]["key"].as_str().unwrap_or_default()
 }
 
 fn url<'a>(saved: &'a Value, provider: &'a Provider) -> &'a str {
-    saved["urls"][provider.id].as_str().filter(|url| !url.is_empty()).unwrap_or(provider.url)
+    saved["providers"][provider.id]["url"].as_str().filter(|url| !url.is_empty()).unwrap_or(provider.url)
 }
 
 // Whether a provider has what it needs for a request.
 fn ready(saved: &Value, provider: &Provider) -> bool {
-    !url(saved, provider).is_empty() && (!provider.needs_key || !key(saved, provider).is_empty())
+    added(saved, provider) && !url(saved, provider).is_empty() && (!provider.needs_key || !key(saved, provider).is_empty())
+}
+
+fn valid_url(url: &str) -> bool {
+    url.is_empty() || url.starts_with("http://") || url.starts_with("https://")
+}
+
+fn write(app: &AppHandle, saved: &Value) -> Result<(), String> {
+    let path = settings_path(app)?;
+    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(path, saved.to_string()).map_err(|e| e.to_string())
 }
 
 // The settings of the chat, with defaults for anything missing or no longer valid.
@@ -73,6 +91,7 @@ fn settings(app: &AppHandle) -> Result<Value, String> {
     Ok(json!({
         "enabled": saved["enabled"].as_bool().unwrap_or(true),
         "sidebar": saved["sidebar"].as_bool().unwrap_or(false),
+        "prompt": saved["prompt"].as_bool().unwrap_or(true),
         "provider": provider.id,
         "key": key(&saved, provider),
         "url": url(&saved, provider),
@@ -120,6 +139,7 @@ pub fn assistant_settings(app: AppHandle, webview: Webview) -> Result<Value, Str
                 "name": provider.name,
                 "url": url(&saved, provider),
                 "defaultUrl": provider.url,
+                "added": added(&saved, provider),
                 "key": !key(&saved, provider).is_empty(),
                 "needsKey": provider.needs_key,
                 "ready": ready(&saved, provider),
@@ -130,7 +150,7 @@ pub fn assistant_settings(app: AppHandle, webview: Webview) -> Result<Value, Str
     Ok(settings)
 }
 
-// Changes one setting. `key` and `url` belong to the given provider, or to the chat's provider.
+// Changes one setting. `key`, `url` and `remove` belong to the given provider, or to the chat's provider.
 #[tauri::command]
 pub async fn assistant_set(
     app: AppHandle,
@@ -151,10 +171,13 @@ pub async fn assistant_set(
             if !value.is_empty() {
                 target.models(url(&saved, target), value).await?;
             }
-            saved["keys"][target.id] = json!(value);
+            saved["providers"][target.id]["key"] = json!(value);
         }
-        "url" if value.is_empty() || value.starts_with("http://") || value.starts_with("https://") => {
-            saved["urls"][target.id] = json!(value);
+        "url" if valid_url(value) => saved["providers"][target.id]["url"] = json!(value),
+        "remove" => {
+            if let Some(providers) = saved["providers"].as_object_mut() {
+                providers.remove(target.id);
+            }
         }
         // Another provider has other models and efforts.
         "provider" if providers::find(value).is_some() => {
@@ -163,17 +186,45 @@ pub async fn assistant_set(
             saved["effort"] = json!("");
         }
         "model" | "effort" | "instructions" => saved[&name] = json!(value),
-        "enabled" | "sidebar" | "thinking" if matches!(value, "true" | "false") => saved[&name] = json!(value == "true"),
+        "enabled" | "sidebar" | "prompt" | "thinking" if matches!(value, "true" | "false") => saved[&name] = json!(value == "true"),
         _ => return Err("Invalid AI setting.".into()),
     }
-    let path = settings_path(&app)?;
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(path, saved.to_string()).map_err(|e| e.to_string())?;
+    write(&app, &saved)?;
     if name == "enabled" {
         crate::mcp::start(&app)?;
     }
     refresh(&app);
     Ok(())
+}
+
+// Adds a provider, or changes its key and URL, once they work. Returns its models.
+#[tauri::command]
+pub async fn assistant_provider_add(
+    app: AppHandle,
+    webview: Webview,
+    provider: String,
+    key: String,
+    url: String,
+) -> Result<Vec<String>, String> {
+    crate::plugins::controls(&webview)?;
+    let provider = providers::find(&provider).ok_or("Unknown provider.")?;
+    let (key, url) = (key.trim(), url.trim().trim_end_matches('/'));
+    if !valid_url(url) {
+        return Err("The URL must start with http:// or https://.".into());
+    }
+    let address = if url.is_empty() { provider.url } else { url };
+    if address.is_empty() {
+        return Err("Enter the URL of the service.".into());
+    }
+    if provider.needs_key && key.is_empty() {
+        return Err("Enter an API key.".into());
+    }
+    let models = provider.models(address, key).await?;
+    let mut saved = saved(&app)?;
+    saved["providers"][provider.id] = json!({"key": key, "url": url});
+    write(&app, &saved)?;
+    refresh(&app);
+    Ok(models)
 }
 
 // The models a provider offers, which also checks its key and URL.
@@ -183,7 +234,7 @@ pub async fn assistant_models(app: AppHandle, webview: Webview, provider: String
     let saved = saved(&app)?;
     let provider = providers::find(&provider).ok_or("Unknown provider.")?;
     if !ready(&saved, provider) {
-        return Err(format!("Set up {} under Model providers first.", provider.name));
+        return Err(format!("Add {} under Model providers first.", provider.name));
     }
     provider.models(url(&saved, provider), key(&saved, provider)).await
 }
@@ -232,20 +283,24 @@ fn emit(app: &AppHandle, chat: &str, event: Value) {
     }
 }
 
-async fn run(app: &AppHandle, chat: &str, messages: &mut Vec<Value>) -> Result<(), String> {
+// Runs the conversation on the target window until the model is done, sending its output to `emit`.
+async fn run(
+    app: &AppHandle,
+    target: &str,
+    extra: &str,
+    messages: &mut Vec<Value>,
+    emit: impl Fn(Value),
+) -> Result<(), String> {
     let settings = settings(app)?;
     let provider = providers::find(settings["provider"].as_str().unwrap_or_default()).unwrap_or(&PROVIDERS[0]);
     let instructions = settings["instructions"].as_str().unwrap_or_default();
-    let system = if instructions.is_empty() {
-        SYSTEM.to_owned()
-    } else {
-        format!("{SYSTEM}\n\nInstructions from the user:\n{instructions}")
-    };
-    // A chat in an app window works on that window, a plugin's chat on the window used last.
-    let target = if crate::session::is_main(chat) { chat.to_string() } else { crate::session::active(app) };
+    let mut system = format!("{SYSTEM}{extra}");
+    if !instructions.is_empty() {
+        system += &format!("\n\nInstructions from the user:\n{instructions}");
+    }
     for _ in 0..MAX_STEPS {
         let response = provider
-            .complete(&settings, &system, &tools(app, &target), messages, |event| emit(app, chat, event))
+            .complete(&settings, &system, &tools(app, target), messages, &emit)
             .await?;
         let content = response["content"].as_array().cloned().unwrap_or_default();
         messages.push(json!({"role": "assistant", "content": content}));
@@ -258,8 +313,8 @@ async fn run(app: &AppHandle, chat: &str, messages: &mut Vec<Value>) -> Result<(
         let mut results = Vec::new();
         for block in content.iter().filter(|block| block["type"] == "tool_use") {
             let name = block["name"].as_str().unwrap_or_default();
-            let result = call(app, &target, name, &block["input"]).await;
-            emit(app, chat, json!({"type": "tool", "label": label(name, &block["input"])}));
+            let result = call(app, target, name, &block["input"]).await;
+            emit(json!({"type": "tool", "label": label(name, &block["input"])}));
             let (content, is_error) = match result {
                 Ok(content) => (content, false),
                 Err(error) => (json!(error), true),
@@ -297,7 +352,9 @@ async fn send(app: &AppHandle, chat: &str, text: String, images: Vec<String>) ->
         chats.get(chat).map(|chat| chat.messages.clone()).unwrap_or_default()
     };
     messages.push(json!({"role": "user", "content": content}));
-    let result = run(app, chat, &mut messages).await;
+    // A chat in an app window works on that window, a plugin's chat on the window used last.
+    let target = if crate::session::is_main(chat) { chat.to_string() } else { crate::session::active(app) };
+    let result = run(app, &target, "", &mut messages, |event| emit(app, chat, event)).await;
     app.state::<Assistant>().chats.lock().unwrap().entry(chat.into()).or_default().messages = messages;
     result
 }
@@ -314,4 +371,19 @@ pub async fn assistant_send(app: AppHandle, webview: Webview, text: String, imag
     }
     emit(&app, chat, json!({"type": "done"}));
     result
+}
+
+// Carries out a request typed into the Algebra input of this window, outside of any chat.
+// Returns the model's closing reply.
+#[tauri::command]
+pub async fn assistant_prompt(app: AppHandle, webview: Webview, text: String) -> Result<String, String> {
+    crate::browser::trusted(&webview)?;
+    let settings = settings(&app)?;
+    if !available(&settings, &app) || settings["prompt"] != true {
+        return Err("Natural language input is not available.".into());
+    }
+    let mut messages = vec![json!({"role": "user", "content": [{"type": "text", "text": text}]})];
+    run(&app, webview.label(), &format!("\n\n{PROMPT}"), &mut messages, |_| {}).await?;
+    let reply = messages.last().and_then(|message| message["content"].as_array()).into_iter().flatten();
+    Ok(reply.filter_map(|block| block["text"].as_str()).collect())
 }

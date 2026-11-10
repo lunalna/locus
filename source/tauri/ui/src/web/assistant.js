@@ -12,6 +12,10 @@ const SYSTEM =
     'You are an AI assistant that can help the user with using Locus, a math app, and with other excercises. ' +
     'Answer concisely. ' +
     'Use Markdown, and write math in LaTeX between $...$ or $$...$$.';
+const PROMPT =
+    'The user typed this request into the Algebra input instead of a command. ' +
+    'Carry it out with the tools, without asking questions. ' +
+    'Then reply with one short plain sentence without Markdown or LaTeX, or with the answer if it was a question.';
 
 const openai = (id, name, url, needsKey = true) => ({ id, name, url, anthropic: false, needsKey });
 const PROVIDERS = [
@@ -30,9 +34,14 @@ const PROVIDERS = [
 const find = (id) => PROVIDERS.find((provider) => provider.id === id);
 const efforts = (provider) => (provider.anthropic ? ANTHROPIC_EFFORTS : OPENAI_EFFORTS);
 const saved = () => JSON.parse(localStorage.getItem(KEY) || '{}');
-const keyOf = (data, provider) => data.keys?.[provider.id] ?? '';
-const urlOf = (data, provider) => data.urls?.[provider.id] || provider.url;
-const ready = (data, provider) => urlOf(data, provider) !== '' && (!provider.needsKey || keyOf(data, provider) !== '');
+// Providers are only kept once the user added them, with their key and URL.
+const added = (data, provider) => Boolean(data.providers?.[provider.id]);
+const keyOf = (data, provider) => data.providers?.[provider.id]?.key ?? '';
+const urlOf = (data, provider) => data.providers?.[provider.id]?.url || provider.url;
+const ready = (data, provider) =>
+    added(data, provider) && urlOf(data, provider) !== '' && (!provider.needsKey || keyOf(data, provider) !== '');
+const validUrl = (url) => !url || url.startsWith('http://') || url.startsWith('https://');
+const entry = (data, provider) => ((data.providers ??= {})[provider.id] ??= { key: '', url: '' });
 
 // The chat's settings, with defaults for anything missing or no longer valid.
 function settings() {
@@ -44,6 +53,7 @@ function settings() {
         provider,
         enabled: data.enabled ?? true,
         sidebar: data.sidebar ?? false,
+        prompt: data.prompt ?? true,
         key: keyOf(data, provider),
         url: urlOf(data, provider),
         ready: ready(data, provider),
@@ -70,6 +80,7 @@ export function publicSettings() {
             name: provider.name,
             url: urlOf(data, provider),
             defaultUrl: provider.url,
+            added: added(data, provider),
             key: keyOf(data, provider) !== '',
             needsKey: provider.needsKey,
             ready: ready(data, provider),
@@ -111,7 +122,7 @@ export function models({ provider: id }) {
     const data = saved();
     const provider = find(id);
     if (!provider) throw 'Unknown provider.';
-    if (!ready(data, provider)) throw `Set up ${provider.name} under Model providers first.`;
+    if (!ready(data, provider)) throw `Add ${provider.name} under Model providers first.`;
     return listModels(provider, urlOf(data, provider), keyOf(data, provider));
 }
 
@@ -122,21 +133,40 @@ export async function set({ name, value, provider: id }) {
     if (!target) throw 'Unknown provider.';
     if (name === 'key') {
         if (value) await listModels(target, urlOf(data, target), value);
-        data.keys = { ...data.keys, [target.id]: value };
-    } else if (name === 'url' && (!value || value.startsWith('http://') || value.startsWith('https://'))) {
-        data.urls = { ...data.urls, [target.id]: value };
+        entry(data, target).key = value;
+    } else if (name === 'url' && validUrl(value)) {
+        entry(data, target).url = value;
+    } else if (name === 'remove') {
+        delete data.providers?.[target.id];
     } else if (name === 'provider' && find(value)) {
         // Another provider has other models and efforts.
         Object.assign(data, { provider: value, model: '', effort: '' });
     } else if (['model', 'effort', 'instructions'].includes(name)) {
         data[name] = value;
-    } else if (['enabled', 'sidebar', 'thinking'].includes(name) && (value === 'true' || value === 'false')) {
+    } else if (['enabled', 'sidebar', 'prompt', 'thinking'].includes(name) && (value === 'true' || value === 'false')) {
         data[name] = value === 'true';
     } else {
         throw 'Invalid AI setting.';
     }
     localStorage.setItem(KEY, JSON.stringify(data));
     window.locusAssistantRefresh?.();
+}
+
+// Adds a provider, or changes its key and URL, once they work. Returns its models.
+export async function addProvider({ provider: id, key, url }) {
+    const provider = find(id);
+    if (!provider) throw 'Unknown provider.';
+    key = key.trim();
+    url = url.trim().replace(/\/+$/, '');
+    if (!validUrl(url)) throw 'The URL must start with http:// or https://.';
+    if (!(url || provider.url)) throw 'Enter the URL of the service.';
+    if (provider.needsKey && !key) throw 'Enter an API key.';
+    const list = await listModels(provider, url || provider.url, key);
+    const data = saved();
+    (data.providers ??= {})[provider.id] = { key, url };
+    localStorage.setItem(KEY, JSON.stringify(data));
+    window.locusAssistantRefresh?.();
+    return list;
 }
 
 // The conversation and the events shown for it, kept for the session so another app's page can show it again.
@@ -185,7 +215,7 @@ async function read(provider, response, each) {
     }
 }
 
-async function readAnthropic(provider, response, thinking) {
+async function readAnthropic(provider, response, thinking, emit) {
     const message = { content: [] };
     await read(provider, response, (event) => {
         if (event.type === 'content_block_start') {
@@ -217,7 +247,7 @@ async function readAnthropic(provider, response, thinking) {
     return message;
 }
 
-async function readOpenai(provider, response, thinking) {
+async function readOpenai(provider, response, thinking, emit) {
     let text = '';
     let finish = '';
     // The kind of the block shown last, so a new one starts when text follows reasoning.
@@ -294,7 +324,7 @@ function openaiMessages(system, history) {
     return result;
 }
 
-async function complete(current, system, history) {
+async function complete(current, system, history, emit) {
     const { provider, url, key, model, effort, thinking } = current;
     if (provider.anthropic) {
         const body = {
@@ -314,7 +344,7 @@ async function complete(current, system, history) {
             headers: { ...headers(provider, key), 'anthropic-beta': 'server-side-fallback-2026-07-01', 'content-type': 'application/json' },
             body: JSON.stringify(body),
         });
-        return readAnthropic(provider, response, thinking);
+        return readAnthropic(provider, response, thinking, emit);
     }
     const tools = definitions().map((tool) => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.input_schema } }));
     const body = { model, stream: true, tools, messages: openaiMessages(system, history) };
@@ -327,14 +357,16 @@ async function complete(current, system, history) {
         headers: { ...headers(provider, key), 'content-type': 'application/json' },
         body: JSON.stringify(body),
     });
-    return readOpenai(provider, response, thinking);
+    return readOpenai(provider, response, thinking, emit);
 }
 
-async function run(history) {
+// Runs the conversation until the model is done, sending its output to `emit`.
+async function run(history, extra, emit) {
     const current = settings();
-    const system = current.instructions ? `${SYSTEM}\n\nInstructions from the user:\n${current.instructions}` : SYSTEM;
+    let system = SYSTEM + extra;
+    if (current.instructions) system += `\n\nInstructions from the user:\n${current.instructions}`;
     for (let step = 0; step < MAX_STEPS; step++) {
-        const response = await complete(current, system, history);
+        const response = await complete(current, system, history, emit);
         history.push({ role: 'assistant', content: response.content });
         if (response.stop_reason === 'refusal') throw 'The model declined to answer this.';
         if (response.stop_reason === 'max_tokens') throw 'The answer was too long and was cut off.';
@@ -365,7 +397,7 @@ async function sendMessage(text, images) {
     if (!content.length) throw 'Write a message or add a picture.';
     const history = [...chat.messages, { role: 'user', content }];
     try {
-        await run(history);
+        await run(history, '', emit);
     } finally {
         chat.messages = history;
     }
@@ -383,4 +415,13 @@ export async function send({ text, images }) {
         emit({ type: 'done' });
         save();
     }
+}
+
+// Carries out a request typed into the Algebra input, outside of the chat. Returns the model's closing reply.
+export async function prompt({ text }) {
+    const current = settings();
+    if (!isAvailable(current) || !current.prompt) throw 'Natural language input is not available.';
+    const history = [{ role: 'user', content: [{ type: 'text', text }] }];
+    await run(history, `\n\n${PROMPT}`, () => {});
+    return history.at(-1).content.filter((block) => block.type === 'text').map((block) => block.text).join('');
 }

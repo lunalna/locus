@@ -21,6 +21,7 @@ import org.geogebra.common.awt.ThemeColors;
 
 import elemental2.core.JsArray;
 import elemental2.dom.CanvasRenderingContext2D;
+import elemental2.dom.DOMMatrix;
 import jsinterop.annotations.JsOverlay;
 import jsinterop.annotations.JsPackage;
 import jsinterop.annotations.JsType;
@@ -51,6 +52,11 @@ public class JLMContext2D extends CanvasRenderingContext2D {
 	protected JLMContext2D() {
 		// constructor extending Context2d must be empty
 	}
+
+	/**
+	 * @return the current transformation of the canvas
+	 */
+	public native DOMMatrix getTransform();
 
 	/**
 	 * TODO use DOMMatrix to avoid separate tracking

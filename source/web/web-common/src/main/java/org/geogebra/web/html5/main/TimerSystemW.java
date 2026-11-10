@@ -16,6 +16,8 @@
 
 package org.geogebra.web.html5.main;
 
+import java.util.ArrayList;
+
 import elemental2.dom.DomGlobal;
 import elemental2.dom.FrameRequestCallback;
 
@@ -41,6 +43,7 @@ public class TimerSystemW {
 
 	private final FrameLimiter limiter = new FrameLimiter();
 	private final FrameRequestCallback frame = this::onFrame;
+	private final ArrayList<Runnable> frameTasks = new ArrayList<>();
 
 	private boolean running = false;
 	private int idle;
@@ -73,6 +76,7 @@ public class TimerSystemW {
 		if (!running) {
 			return;
 		}
+		runFrameTasks();
 		if (!suggestRepaint()) {
 			idle++;
 		}
@@ -82,6 +86,28 @@ public class TimerSystemW {
 			return;
 		}
 		DomGlobal.requestAnimationFrame(frame);
+	}
+
+	private void runFrameTasks() {
+		if (frameTasks.isEmpty()) {
+			return;
+		}
+		Runnable[] tasks = frameTasks.toArray(new Runnable[0]);
+		frameTasks.clear();
+		for (Runnable task : tasks) {
+			task.run();
+		}
+	}
+
+	/**
+	 * Run a task once at the start of the next frame, before the views repaint.
+	 *
+	 * @param task
+	 *            task to run
+	 */
+	public void runOnNextFrame(Runnable task) {
+		frameTasks.add(task);
+		ensureRunning();
 	}
 
 	/**

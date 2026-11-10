@@ -21,6 +21,7 @@ import java.util.LinkedList;
 import org.geogebra.common.euclidian.DrawableND;
 import org.geogebra.common.euclidian.EuclidianConstants;
 import org.geogebra.common.euclidian.EuclidianController;
+import org.geogebra.common.euclidian.EuclidianView;
 import org.geogebra.common.euclidian.controller.MouseTouchGestureController;
 import org.geogebra.common.euclidian.draw.DrawInline;
 import org.geogebra.common.euclidian.event.AbstractEvent;
@@ -69,6 +70,11 @@ public class MouseTouchGestureControllerW extends MouseTouchGestureController
 	private DrawingEmulator drawingEmulator;
 	private DrawingRecorder drawingRecorder;
 	private boolean isRecording;
+
+	private PointerEvent pendingMove;
+	private boolean twoTouchPending;
+	private final double[] pendingTwoTouch = new double[4];
+	private final Runnable pendingMovesHandler = this::flushPendingMoves;
 
 	/**
 	 * recalculates cached styles concerning browser environment
@@ -204,6 +210,66 @@ public class MouseTouchGestureControllerW extends MouseTouchGestureController
 	}
 
 	/**
+	 * Handle pointer move in the next frame, only the latest position is processed.
+	 *
+	 * @param event
+	 *            pointer move
+	 */
+	public void onMouseMove(PointerEvent event) {
+		if (dragModeMustBeSelected && needsEverySample()) {
+			flushPendingMoves();
+			onMouseMoveNow(event, System.currentTimeMillis(), true);
+			return;
+		}
+		if (pendingMove != null) {
+			pendingMove.release();
+		} else if (!twoTouchPending) {
+			((AppW) app).getTimerSystem().runOnNextFrame(pendingMovesHandler);
+		}
+		pendingMove = event;
+	}
+
+	private boolean needsEverySample() {
+		int mode = ec.getMode();
+		return EuclidianView.isPenMode(mode) || mode == EuclidianConstants.MODE_FREEHAND_FUNCTION
+				|| mode == EuclidianConstants.MODE_ERASER || ec.freehandModePrepared();
+	}
+
+	@Override
+	public void twoTouchMove(double x1, double y1, double x2, double y2) {
+		pendingTwoTouch[0] = x1;
+		pendingTwoTouch[1] = y1;
+		pendingTwoTouch[2] = x2;
+		pendingTwoTouch[3] = y2;
+		if (!twoTouchPending && pendingMove == null) {
+			((AppW) app).getTimerSystem().runOnNextFrame(pendingMovesHandler);
+		}
+		twoTouchPending = true;
+	}
+
+	@Override
+	public void twoTouchStart(double x1, double y1, double x2, double y2) {
+		flushPendingMoves();
+		super.twoTouchStart(x1, y1, x2, y2);
+	}
+
+	/**
+	 * Process pointer moves that are waiting for the next frame.
+	 */
+	public void flushPendingMoves() {
+		PointerEvent event = pendingMove;
+		if (event != null) {
+			pendingMove = null;
+			onMouseMoveNow(event, System.currentTimeMillis(), true);
+		}
+		if (twoTouchPending) {
+			twoTouchPending = false;
+			super.twoTouchMove(
+					pendingTwoTouch[0], pendingTwoTouch[1], pendingTwoTouch[2], pendingTwoTouch[3]);
+		}
+	}
+
+	/**
 	 * Handle mouse move event immediately.
 	 *
 	 * @param event
@@ -245,6 +311,7 @@ public class MouseTouchGestureControllerW extends MouseTouchGestureController
 	 *            pointer up event
 	 */
 	public void onPointerEventEnd(AbstractEvent e) {
+		flushPendingMoves();
 		app.getFpsProfiler().notifyTouchEnd();
 		if (isRecording) {
 			drawingRecorder.recordTouchEnd();
@@ -274,6 +341,7 @@ public class MouseTouchGestureControllerW extends MouseTouchGestureController
 	 *            pointer start
 	 */
 	public void onPointerEventStart(AbstractEvent event) {
+		flushPendingMoves();
 		app.getFpsProfiler().notifyTouchStart();
 		app.hideMenu();
 

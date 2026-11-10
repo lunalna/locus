@@ -16,12 +16,16 @@
 
 package org.geogebra.web.html5.main;
 
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 import org.geogebra.common.awt.GColor;
 import org.geogebra.common.awt.GDimension;
 import org.geogebra.common.awt.GFont;
 import org.geogebra.common.awt.GGraphics2D;
+import org.geogebra.common.awt.ThemeColors;
 import org.geogebra.common.euclidian.DrawEquation;
 import org.geogebra.common.kernel.geos.TextProperties;
 import org.geogebra.common.kernel.kernelND.GeoElementND;
@@ -40,6 +44,11 @@ import com.himamis.retex.renderer.share.platform.graphics.Image;
 import com.himamis.retex.renderer.web.FactoryProviderGWT;
 import com.himamis.retex.renderer.web.graphics.Graphics2DW;
 
+import elemental2.dom.DOMMatrix;
+import elemental2.dom.DomGlobal;
+import elemental2.dom.HTMLCanvasElement;
+import jsinterop.base.Js;
+
 /**
  * Web LaTeX helper class
  */
@@ -49,6 +58,32 @@ public class DrawEquationW extends DrawEquation {
 	 */
 	private static double printScale = 1;
 	private final Supplier<Double> pixelRatio;
+	private static final int MAX_BITMAP_PIXELS = 8_000_000;
+	private static final int MAX_BITMAPS = 2000;
+	private static final int BITMAP_PADDING = 4;
+	private final LinkedHashMap<String, CachedEquation> bitmaps =
+			new LinkedHashMap<String, CachedEquation>(64, 0.75f, true) {
+				@Override
+				protected boolean removeEldestEntry(Map.Entry<String, CachedEquation> eldest) {
+					if (size() <= MAX_BITMAPS) {
+						return false;
+					}
+					if (eldest.getValue().canvas != null) {
+						HTMLCanvasElement canvas = eldest.getValue().canvas;
+						bitmapPixels -= canvas.width * canvas.height;
+					}
+					return true;
+				}
+			};
+	private int bitmapPixels;
+	private int themeVersion;
+
+	private static class CachedEquation {
+		HTMLCanvasElement canvas;
+		int width;
+		int height;
+		boolean tooLarge;
+	}
 
 	public DrawEquationW(Supplier<Double> pixelRatio) {
 		this.pixelRatio = pixelRatio;
@@ -70,9 +105,47 @@ public class DrawEquationW extends DrawEquation {
 			boolean updateAgain,
 			final Runnable callback) {
 
-		TeXIcon icon = createIcon(eqstring, fgColor, font, getLaTeXStyle(font, serif), null, null);
+		GGraphics2DW graphics = (GGraphics2DW) g2;
+		JLMContext2D ctx = graphics.getContext();
+		int style = getLaTeXStyle(font, serif);
+		String key = null;
+		DOMMatrix transform = null;
+		if (!app1.isExporting() && graphics.getCanvas() != null && !eqstring.contains("graphics")
+				&& !eqstring.contains("imagebase")) {
+			transform = ctx.getTransform();
+			if (transform.b == 0 && transform.c == 0 && transform.a == transform.d
+					&& transform.a > 0) {
+				key = eqstring + '\0' + font.getSize() + '\0' + style + '\0' + fgColor.getARGB()
+						+ '\0' + transform.a + '\0' + ctx.locusThemed;
+			}
+		}
+		if (key != null) {
+			CachedEquation cached = findCached(key);
+			if (cached == null) {
+				bitmaps.put(key, new CachedEquation());
+			} else {
+				if (cached.canvas == null && !cached.tooLarge) {
+					renderBitmap(cached, eqstring, fgColor, font, style, transform.a,
+							ctx.locusThemed);
+				}
+				if (cached.canvas != null) {
+					ctx.save();
+					ctx.setTransform(1, 0, 0, 1, 0, 0);
+					ctx.drawImage(cached.canvas,
+							Math.round((x - BITMAP_PADDING) * transform.a + transform.e),
+							Math.round((y - BITMAP_PADDING) * transform.a + transform.f));
+					ctx.restore();
+					if (callback != null) {
+						callback.run();
+					}
+					return new Dimension(cached.width, cached.height);
+				}
+			}
+		}
 
-		Graphics2DW g3 = new Graphics2DW(((GGraphics2DW) g2).getContext());
+		TeXIcon icon = createIcon(eqstring, fgColor, font, style, null, null);
+
+		Graphics2DW g3 = new Graphics2DW(ctx);
 		g3.setDrawingFinishedCallback(async -> {
 			g2.updateCanvasColor();
 			if (callback != null) {
@@ -83,6 +156,55 @@ public class DrawEquationW extends DrawEquation {
 		g2.updateCanvasColor();
 		g3.maybeNotifyDrawingFinishedCallback(false);
 		return new Dimension(icon.getIconWidth(), icon.getIconHeight());
+	}
+
+	private CachedEquation findCached(String key) {
+		if (themeVersion != ThemeColors.getVersion()) {
+			themeVersion = ThemeColors.getVersion();
+			bitmaps.clear();
+			bitmapPixels = 0;
+		}
+		return bitmaps.get(key);
+	}
+
+	// rendered when a formula is drawn a second time, so changing texts skip it
+	private void renderBitmap(CachedEquation cached, String eqstring, GColor fgColor, GFont font,
+			int style, double scale, boolean themed) {
+		TeXIcon icon = createIcon(eqstring, fgColor, font, style, null, null);
+		int width = (int) Math.ceil((icon.getIconWidth() + 2 * BITMAP_PADDING) * scale);
+		int height = (int) Math.ceil((icon.getIconHeight() + 2 * BITMAP_PADDING) * scale);
+		if (width * (double) height > MAX_BITMAP_PIXELS / 4) {
+			cached.tooLarge = true;
+			return;
+		}
+		HTMLCanvasElement canvas = Js.uncheckedCast(DomGlobal.document.createElement("canvas"));
+		canvas.width = width;
+		canvas.height = height;
+		JLMContext2D ctx = JLMContextHelper.as(canvas.getContext("2d"));
+		ctx.locusThemed = themed;
+		ctx.scale(scale, scale);
+		Graphics2DW g3 = new Graphics2DW(ctx);
+		boolean[] finished = new boolean[1];
+		g3.setDrawingFinishedCallback(async -> finished[0] = true);
+		icon.paintIcon(() -> fgColor, g3, BITMAP_PADDING, BITMAP_PADDING);
+		g3.maybeNotifyDrawingFinishedCallback(false);
+		if (!finished[0]) {
+			return;
+		}
+		cached.canvas = canvas;
+		cached.width = icon.getIconWidth();
+		cached.height = icon.getIconHeight();
+		bitmapPixels += width * height;
+		Iterator<CachedEquation> oldest = bitmaps.values().iterator();
+		while (bitmapPixels > MAX_BITMAP_PIXELS && oldest.hasNext()) {
+			CachedEquation removed = oldest.next();
+			if (removed != cached) {
+				if (removed.canvas != null) {
+					bitmapPixels -= removed.canvas.width * removed.canvas.height;
+				}
+				oldest.remove();
+			}
+		}
 	}
 
 	/**
