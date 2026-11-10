@@ -126,7 +126,7 @@ class NavigationRail extends FlowPanel implements ExamListener {
 			center.add(btnSpreadsheet);
 		}
 		if (app.supportsView(App.VIEW_ASSISTANT)) {
-			btnAssistant = createTabButton("AI assistant", MaterialDesignResources.INSTANCE.chat());
+			btnAssistant = createTabButton("AI sidebar", MaterialDesignResources.INSTANCE.chat());
 			btnAssistant.addFastClickHandler(source -> onAssistantPressed());
 			btnAssistant.setVisible(AssistantPanel.isEnabled());
 			center.add(btnAssistant);
@@ -309,7 +309,7 @@ class NavigationRail extends FlowPanel implements ExamListener {
 		setButtonText(btnTableView, "Table");
 		setButtonText(btnDistribution, "Distribution");
 		setButtonText(btnSpreadsheet, "Perspective.Spreadsheet");
-		setButtonText(btnAssistant, "AI assistant");
+		setButtonText(btnAssistant, "AI sidebar");
 	}
 
 	private void setButtonText(StandardButton btn, String key) {

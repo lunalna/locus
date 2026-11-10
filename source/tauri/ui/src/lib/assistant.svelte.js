@@ -1,7 +1,7 @@
 import { invoke } from '$backend';
 
 export const assistant = $state({
-    settings: { key: false, model: '', effort: '', url: '', enabled: false, available: false },
+    settings: { enabled: false, sidebar: false, available: false, providers: [] },
     // 'conversation' or 'camera'
     view: 'conversation',
     items: [],
@@ -15,10 +15,18 @@ export const assistant = $state({
 export const loadSettings = () =>
     invoke('assistant_settings').then((settings) => (assistant.settings = settings));
 
-export const setSetting = (name, value) =>
-    invoke('assistant_set', { name, value }).then(loadSettings);
+export const setSetting = (name, value, provider) =>
+    invoke('assistant_set', { name, value: String(value), provider }).then(loadSettings);
 
-// Scales a picture down to the size Claude reads at full detail and attaches it as a JPEG.
+// Shows the chat again after the page loaded another app.
+export const loadHistory = () =>
+    invoke('assistant_history').then((events) => {
+        assistant.items = [];
+        assistant.busy = false;
+        events.forEach(window.assistantEvent);
+    });
+
+// Scales a picture down to the size models read at full detail and attaches it as a JPEG.
 export function attach(source, width, height) {
     const scale = Math.min(1, 1568 / Math.max(width, height));
     const canvas = document.createElement('canvas');
@@ -33,13 +41,8 @@ export function send(text) {
     if ((!text && !images.length) || assistant.busy) return false;
     assistant.attachments = [];
     assistant.busy = true;
-    push({ kind: 'user', text, images });
-    invoke('assistant_send', { text, images })
-        .catch((error) => push({ kind: 'error', text: String(error) }))
-        .finally(() => {
-            assistant.busy = false;
-            assistant.version++;
-        });
+    // The message, the reply and errors all arrive as events.
+    invoke('assistant_send', { text, images }).catch(() => (assistant.busy = false));
     return true;
 }
 
@@ -55,9 +58,17 @@ function push(item) {
     assistant.version++;
 }
 
-// Called by the app for each streamed event of a reply.
+// Called by the app for each event of the chat: the user's message, the streamed reply, errors and the end.
 window.assistantEvent = (event) => {
-    if (event.type === 'block') {
+    if (event.type === 'user') {
+        assistant.busy = true;
+        push({ kind: 'user', text: event.text, images: event.images });
+    } else if (event.type === 'error') {
+        push({ kind: 'error', text: event.text });
+    } else if (event.type === 'done') {
+        assistant.busy = false;
+        assistant.version++;
+    } else if (event.type === 'block') {
         push({ kind: event.kind === 'thinking' ? 'thinking' : 'assistant', text: '' });
     } else if (event.type === 'delta') {
         assistant.items.at(-1).text += event.text;

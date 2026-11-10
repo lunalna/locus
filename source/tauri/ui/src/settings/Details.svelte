@@ -19,7 +19,7 @@
         'construction:write': ['Change the construction', PencilRuler],
         files: ['Open and save files you choose', FileText],
         websites: ['Show websites in its window', Globe],
-        assistant: ['Use the AI assistant and allow it during exams', Bot],
+        assistant: ['Use AI features and allow them during exams', Bot],
         exam: ['Allow leaving the window during exams and add to the exam log', GraduationCap],
     };
 
@@ -37,7 +37,7 @@
                   ...(plugin.panel ? [['Show a panel in the app windows', PanelRight]] : []),
                   ...(plugin.permissions ?? []).map((name) => permissionNames[name] ?? [name, Eye]),
                   ...(plugin.network?.length ? [[`Connect to ${plugin.network.join(', ')}`, Wifi]] : []),
-                  ...(plugin.tools.length ? [[`Give the AI assistant tools: ${plugin.tools.join(', ')}`, Wrench]] : []),
+                  ...(plugin.tools.length ? [[`Give the AI tools: ${plugin.tools.join(', ')}`, Wrench]] : []),
               ]
             : [],
     );

@@ -1,5 +1,5 @@
 <script>
-    import { Blocks, Bot, Box, ChartSpline, Gauge, Package, Palette, Plug, Settings2, Sheet, Sigma, SlidersHorizontal, SquareFunction, X } from '@lucide/svelte';
+    import { Blocks, Bot, Box, ChartSpline, Gauge, Package, Palette, Settings2, Sheet, Sigma, SlidersHorizontal, SquareFunction, X } from '@lucide/svelte';
     import { BitsConfig } from 'bits-ui';
 
     import { Button } from '$lib/components/ui/button';
@@ -7,7 +7,9 @@
     import About from './About.svelte';
     import AppSettings from './AppSettings.svelte';
     import Appearance from './Appearance.svelte';
-    import Assistant from './Assistant.svelte';
+    import AiGeneral from './AiGeneral.svelte';
+    import AiProviders from './AiProviders.svelte';
+    import AiSidebar from './AiSidebar.svelte';
     import Details from './Details.svelte';
     import General from './General.svelte';
     import { APPEARANCE, GENERAL } from './keys.js';
@@ -37,6 +39,8 @@
             };
         });
     }
+
+    const web = import.meta.env.MODE === 'web';
 
     function build() {
         const exam = window.locusAppSettings.exam();
@@ -70,11 +74,21 @@
                 },
             },
             { name: 'Performance', icon: Gauge, component: Performance, props: {} },
-            { name: 'AI assistant', icon: Bot, component: Assistant, props: {} },
-            { name: 'Plugins', icon: Blocks, component: Plugins, props: {} },
-            { name: 'MCP server', icon: Plug, component: Mcp, props: {} },
-            // a browser cannot run an MCP server or plugin windows
-        ].filter((section) => import.meta.env.MODE !== 'web' || ![Mcp, Plugins].includes(section.component));
+            {
+                name: 'AI features',
+                icon: Bot,
+                component: null,
+                children: [
+                    { name: 'General', component: AiGeneral, props: {} },
+                    { name: 'Model providers', component: AiProviders, props: {} },
+                    { name: 'AI sidebar', component: AiSidebar, props: {} },
+                    // a browser cannot run an MCP server
+                    ...(web ? [] : [{ name: 'MCP server', component: Mcp, props: {} }]),
+                ],
+            },
+            // a browser cannot run plugin windows
+            ...(web ? [] : [{ name: 'Plugins', icon: Blocks, component: Plugins, props: {} }]),
+        ];
     }
 
     // A section without a page of its own shows its first subsection.

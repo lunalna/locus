@@ -13,8 +13,8 @@
 <!-- Popups render inside the shadow root so they get its styles. -->
 <BitsConfig defaultPortalTo={container}>
     <div class="embedded absolute inset-0 flex flex-col bg-background font-sans text-[14px] text-foreground">
-        {#if !assistant.settings.available}
-            <p class="m-6 text-muted-foreground">The AI assistant is not available.</p>
+        {#if !assistant.settings.available || !assistant.settings.sidebar}
+            <p class="m-6 text-muted-foreground">The AI sidebar is not available.</p>
         {:else}
             <div class="flex items-center gap-2 border-b border-border p-2">
                 <Tabs.Root bind:value={assistant.view}>

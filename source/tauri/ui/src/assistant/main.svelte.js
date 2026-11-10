@@ -1,6 +1,6 @@
 import { mount } from 'svelte';
 import katex from 'katex/dist/katex.min.css?inline';
-import { assistant, loadSettings } from '../lib/assistant.svelte.js';
+import { assistant, loadHistory, loadSettings } from '../lib/assistant.svelte.js';
 import css from './assistant.css?inline';
 import Embedded from './Embedded.svelte';
 
@@ -30,10 +30,11 @@ pending.forEach(attach);
 // Tells the app whether to show the assistant; called after a settings change, an exam start or end, or a plugin allowing it.
 window.locusAssistantRefresh = () =>
     loadSettings().then((settings) => {
-        window.locusAssistantEnabled = settings.available;
+        window.locusAssistantEnabled = settings.available && settings.sidebar;
         window.locusAssistantUpdate?.();
     });
 window.locusAssistantRefresh();
+loadHistory();
 
 // Called by the app when an exam starts or ends, so chats do not carry across.
 window.locusAssistantReset = () => {

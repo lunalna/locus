@@ -18,6 +18,7 @@ mod keys;
 mod mcp;
 mod performance;
 mod plugins;
+mod providers;
 mod resourcepack;
 mod session;
 #[cfg(desktop)]
@@ -408,6 +409,8 @@ pub fn run() {
             assistant::assistant_settings,
             assistant::assistant_set,
             assistant::assistant_reset,
+            assistant::assistant_history,
+            assistant::assistant_models,
             tools::assistant_tool_result,
             files::file_pick_save,
             files::file_pick_open,

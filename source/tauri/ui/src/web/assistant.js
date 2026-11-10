@@ -1,169 +1,342 @@
-// The AI assistant for the web version. The browser talks to the Anthropic API directly with the user's key.
+// The AI sidebar for the web version. The browser talks to the provider's API directly with the user's key.
 import { call, definitions, label } from './tools.js';
 
-const KEY = 'locus.assistant';
-const MODELS = ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-fable-5-1'];
-const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-const DEFAULT_URL = 'https://api.anthropic.com';
+const KEY = 'locus.ai';
+const HISTORY = 'locus.ai.chat';
+const ANTHROPIC_MODELS = ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-fable-5-1'];
+const ANTHROPIC_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const OPENAI_EFFORTS = ['default', 'low', 'medium', 'high'];
 const VERSION = '2026-10-21';
 const MAX_STEPS = 20;
 const SYSTEM =
     'You are an AI assistant that can help the user with using Locus, a math app, and with other excercises. ' +
     'Answer concisely. ' +
     'Use Markdown, and write math in LaTeX between $...$ or $$...$$.';
-const UNREACHABLE = 'Could not reach Anthropic. Check the internet connection.';
 
-let messages = [];
+const openai = (id, name, url, needsKey = true) => ({ id, name, url, anthropic: false, needsKey });
+const PROVIDERS = [
+    { id: 'anthropic', name: 'Anthropic', url: 'https://api.anthropic.com', anthropic: true, needsKey: true },
+    openai('openai', 'OpenAI', 'https://api.openai.com/v1'),
+    openai('openrouter', 'OpenRouter', 'https://openrouter.ai/api/v1'),
+    openai('google', 'Google Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai'),
+    openai('mistral', 'Mistral', 'https://api.mistral.ai/v1'),
+    openai('groq', 'Groq', 'https://api.groq.com/openai/v1'),
+    openai('deepseek', 'DeepSeek', 'https://api.deepseek.com/v1'),
+    openai('xai', 'xAI', 'https://api.x.ai/v1'),
+    openai('ollama', 'Ollama', 'http://localhost:11434/v1', false),
+    openai('custom', 'Custom (OpenAI compatible)', '', false),
+];
 
+const find = (id) => PROVIDERS.find((provider) => provider.id === id);
+const efforts = (provider) => (provider.anthropic ? ANTHROPIC_EFFORTS : OPENAI_EFFORTS);
+const saved = () => JSON.parse(localStorage.getItem(KEY) || '{}');
+const keyOf = (data, provider) => data.keys?.[provider.id] ?? '';
+const urlOf = (data, provider) => data.urls?.[provider.id] || provider.url;
+const ready = (data, provider) => urlOf(data, provider) !== '' && (!provider.needsKey || keyOf(data, provider) !== '');
+
+// The chat's settings, with defaults for anything missing or no longer valid.
 function settings() {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    const data = saved();
+    const provider = find(data.provider) ?? PROVIDERS[0];
+    let model = data.model ?? '';
+    if (provider.anthropic && !ANTHROPIC_MODELS.includes(model)) model = ANTHROPIC_MODELS[0];
     return {
-        key: saved.key ?? '',
-        model: MODELS.includes(saved.model) ? saved.model : MODELS[0],
-        effort: EFFORTS.includes(saved.effort) ? saved.effort : 'medium',
-        url: saved.url || DEFAULT_URL,
-        thinking: saved.thinking ?? 'true',
-        instructions: saved.instructions ?? '',
-        enabled: saved.enabled ?? 'false',
+        provider,
+        enabled: data.enabled ?? true,
+        sidebar: data.sidebar ?? false,
+        key: keyOf(data, provider),
+        url: urlOf(data, provider),
+        ready: ready(data, provider),
+        model,
+        effort: efforts(provider).includes(data.effort) ? data.effort : provider.anthropic ? 'medium' : 'default',
+        thinking: data.thinking ?? true,
+        instructions: data.instructions ?? '',
     };
 }
 
-const headers = (key) => ({
-    'x-api-key': key,
-    'anthropic-version': VERSION,
-    'anthropic-dangerous-direct-browser-access': 'true',
-});
+const isAvailable = (current) => current.enabled && current.ready && current.model !== '';
 
-// Returns the settings without the key itself, like the desktop app.
+// Returns the settings without the keys themselves, like the desktop app.
 export function publicSettings() {
     const current = settings();
-    const enabled = current.enabled === 'true';
-    return { ...current, key: current.key !== '', thinking: current.thinking === 'true', enabled, available: enabled && current.key !== '' };
+    const data = saved();
+    return {
+        ...current,
+        provider: current.provider.id,
+        key: current.key !== '',
+        available: isAvailable(current),
+        providers: PROVIDERS.map((provider) => ({
+            id: provider.id,
+            name: provider.name,
+            url: urlOf(data, provider),
+            defaultUrl: provider.url,
+            key: keyOf(data, provider) !== '',
+            needsKey: provider.needsKey,
+            ready: ready(data, provider),
+            efforts: efforts(provider),
+        })),
+    };
 }
 
-const errorMessage = (data) => data?.error?.message ?? 'The request to Claude failed.';
+function headers(provider, key) {
+    if (provider.anthropic) return { 'x-api-key': key, 'anthropic-version': VERSION, 'anthropic-dangerous-direct-browser-access': 'true' };
+    return key ? { authorization: `Bearer ${key}` } : {};
+}
 
-// Checks the key with a cheap request, so a wrong key is caught on the setup page.
-async function checkKey(url, key) {
-    const response = await fetch(`${url}/v1/models?limit=1`, { headers: headers(key) }).catch(() => {
-        throw UNREACHABLE;
+function errorMessage(provider, data) {
+    // Gemini wraps its errors in a list.
+    const error = Array.isArray(data) ? data[0]?.error : data?.error;
+    return error?.message ?? (typeof error === 'string' ? error : `The request to ${provider.name} failed.`);
+}
+
+async function request(provider, url, options) {
+    const response = await fetch(url, options).catch(() => {
+        throw `Could not reach ${provider.name}. Check the internet connection and the URL.`;
     });
-    if (response.status === 200) return;
     if (response.status === 401 || response.status === 403) throw 'This API key was not accepted.';
-    throw errorMessage(await response.json().catch(() => null));
+    if (!response.ok) throw errorMessage(provider, await response.json().catch(() => null));
+    return response;
 }
 
-export async function set({ name, value }) {
+// The models offered with this key. Anthropic's list is fixed to the models the request below supports.
+async function listModels(provider, url, key) {
+    const path = provider.anthropic ? '/v1/models?limit=1' : '/models';
+    const response = await request(provider, url + path, { headers: headers(provider, key) });
+    if (provider.anthropic) return ANTHROPIC_MODELS;
+    const data = await response.json().catch(() => ({}));
+    return (data.data ?? []).map((model) => model.id).sort();
+}
+
+export function models({ provider: id }) {
+    const data = saved();
+    const provider = find(id);
+    if (!provider) throw 'Unknown provider.';
+    if (!ready(data, provider)) throw `Set up ${provider.name} under Model providers first.`;
+    return listModels(provider, urlOf(data, provider), keyOf(data, provider));
+}
+
+export async function set({ name, value, provider: id }) {
     value = name === 'instructions' ? value.trim() : value.trim().replace(/\/+$/, '');
-    const current = settings();
-    if (name === 'key' && value) await checkKey(current.url, value);
-    const valid = {
-        key: true,
-        url: !value || value.startsWith('http://') || value.startsWith('https://'),
-        model: MODELS.includes(value),
-        effort: EFFORTS.includes(value),
-        thinking: value === 'true' || value === 'false',
-        enabled: value === 'true' || value === 'false',
-        instructions: true,
-    }[name];
-    if (!valid) throw 'Invalid assistant setting.';
-    localStorage.setItem(KEY, JSON.stringify({ ...current, [name]: value }));
+    const data = saved();
+    const target = id ? find(id) : (find(data.provider) ?? PROVIDERS[0]);
+    if (!target) throw 'Unknown provider.';
+    if (name === 'key') {
+        if (value) await listModels(target, urlOf(data, target), value);
+        data.keys = { ...data.keys, [target.id]: value };
+    } else if (name === 'url' && (!value || value.startsWith('http://') || value.startsWith('https://'))) {
+        data.urls = { ...data.urls, [target.id]: value };
+    } else if (name === 'provider' && find(value)) {
+        // Another provider has other models and efforts.
+        Object.assign(data, { provider: value, model: '', effort: '' });
+    } else if (['model', 'effort', 'instructions'].includes(name)) {
+        data[name] = value;
+    } else if (['enabled', 'sidebar', 'thinking'].includes(name) && (value === 'true' || value === 'false')) {
+        data[name] = value === 'true';
+    } else {
+        throw 'Invalid AI setting.';
+    }
+    localStorage.setItem(KEY, JSON.stringify(data));
     window.locusAssistantRefresh?.();
 }
 
-export function reset() {
-    messages = [];
-}
-
-const emit = (event) => window.assistantEvent?.(event);
-
-// Rebuilds the message from stream events and forwards text and thinking to the chat.
-function handle(message, event, thinking) {
-    if (event.type === 'content_block_start') {
-        const block = event.content_block;
-        if (block.type === 'text' || (thinking && block.type === 'thinking')) emit({ type: 'block', kind: block.type });
-        message.content.push(block);
-    } else if (event.type === 'content_block_delta') {
-        const block = message.content[event.index];
-        const field = {
-            text_delta: 'text',
-            thinking_delta: 'thinking',
-            signature_delta: 'signature',
-            input_json_delta: 'partial_json',
-        }[event.delta.type];
-        if (!field) return;
-        block[field] = (block[field] ?? '') + event.delta[field];
-        if (field === 'text' || (thinking && field === 'thinking')) emit({ type: 'delta', text: event.delta[field] });
-    } else if (event.type === 'content_block_stop') {
-        const block = message.content[event.index];
-        if ('partial_json' in block) {
-            try {
-                block.input = JSON.parse(block.partial_json);
-            } catch {
-                block.input = {};
-            }
-            delete block.partial_json;
-        }
-    } else if (event.type === 'message_delta') {
-        message.stop_reason = event.delta.stop_reason;
-    } else if (event.type === 'error') {
-        throw errorMessage(event);
+// The conversation and the events shown for it, kept for the session so another app's page can show it again.
+let chat = JSON.parse(sessionStorage.getItem(HISTORY) || 'null') ?? { messages: [], events: [] };
+function save() {
+    try {
+        sessionStorage.setItem(HISTORY, JSON.stringify(chat));
+    } catch {
+        // Too many pictures for the storage quota; the chat then lasts until the page is left.
     }
 }
 
-async function complete(history) {
-    const current = settings();
-    const thinking = current.thinking === 'true';
-    const system = current.instructions ? `${SYSTEM}\n\nInstructions from the user:\n${current.instructions}` : SYSTEM;
-    const body = {
-        model: current.model,
-        max_tokens: 64000,
-        stream: true,
-        system,
-        tools: definitions(),
-        messages: history,
-        thinking: { type: 'adaptive', display: thinking ? 'summarized' : 'omitted' },
-        output_config: { effort: current.effort },
-    };
-    // Haiku has no server-side fallback for refusals.
-    if (current.model !== 'claude-haiku-5-5') body.fallbacks = 'default';
-    const response = await fetch(`${current.url}/v1/messages`, {
-        method: 'POST',
-        headers: {
-            ...headers(current.key),
-            'anthropic-beta': 'server-side-fallback-2026-07-01',
-            'content-type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    }).catch(() => {
-        throw UNREACHABLE;
-    });
-    if (!response.ok) throw errorMessage(await response.json().catch(() => null));
-    const message = { content: [] };
+export function reset() {
+    chat = { messages: [], events: [] };
+    save();
+}
+
+export const history = () => chat.events;
+
+function emit(event) {
+    const last = chat.events.at(-1);
+    // Deltas are joined, so the history does not keep one event per token.
+    if (last?.type === 'delta' && event.type === 'delta') last.text += event.text;
+    else chat.events.push({ ...event });
+    window.assistantEvent?.(event);
+}
+
+// Calls `each` with the data of every server-sent event.
+async function read(provider, response, each) {
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = '';
     for (;;) {
         const { done, value } = await reader.read().catch(() => {
-            throw 'The connection to Anthropic was lost.';
+            throw `The connection to ${provider.name} was lost.`;
         });
-        if (done) return message;
+        if (done) return;
         buffer += value;
         let end;
-        while ((end = buffer.indexOf('\n\n')) >= 0) {
-            const lines = buffer.slice(0, end).split('\n');
-            buffer = buffer.slice(end + 2);
-            for (const line of lines) {
-                if (line.startsWith('data: ')) handle(message, JSON.parse(line.slice(6)), thinking);
-            }
+        while ((end = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, end).trim();
+            buffer = buffer.slice(end + 1);
+            if (!line.startsWith('data:')) continue;
+            const data = line.slice(5).trim();
+            if (data !== '[DONE]') each(JSON.parse(data));
         }
     }
 }
 
+async function readAnthropic(provider, response, thinking) {
+    const message = { content: [] };
+    await read(provider, response, (event) => {
+        if (event.type === 'content_block_start') {
+            const block = event.content_block;
+            if (block.type === 'text' || (thinking && block.type === 'thinking')) emit({ type: 'block', kind: block.type });
+            message.content.push(block);
+        } else if (event.type === 'content_block_delta') {
+            const block = message.content[event.index];
+            const field = { text_delta: 'text', thinking_delta: 'thinking', signature_delta: 'signature', input_json_delta: 'partial_json' }[event.delta.type];
+            if (!field) return;
+            block[field] = (block[field] ?? '') + event.delta[field];
+            if (field === 'text' || (thinking && field === 'thinking')) emit({ type: 'delta', text: event.delta[field] });
+        } else if (event.type === 'content_block_stop') {
+            const block = message.content[event.index];
+            if ('partial_json' in block) {
+                try {
+                    block.input = JSON.parse(block.partial_json);
+                } catch {
+                    block.input = {};
+                }
+                delete block.partial_json;
+            }
+        } else if (event.type === 'message_delta') {
+            message.stop_reason = event.delta.stop_reason;
+        } else if (event.type === 'error') {
+            throw errorMessage(provider, event);
+        }
+    });
+    return message;
+}
+
+async function readOpenai(provider, response, thinking) {
+    let text = '';
+    let finish = '';
+    // The kind of the block shown last, so a new one starts when text follows reasoning.
+    let shown = '';
+    const calls = [];
+    await read(provider, response, (event) => {
+        if (event.error) throw errorMessage(provider, event);
+        const choice = event.choices?.[0] ?? {};
+        const delta = choice.delta ?? {};
+        const parts = [
+            ['thinking', thinking ? (delta.reasoning_content ?? delta.reasoning ?? '') : ''],
+            ['text', delta.content ?? ''],
+        ];
+        for (const [kind, part] of parts) {
+            if (!part) continue;
+            if (shown !== kind) emit({ type: 'block', kind });
+            shown = kind;
+            emit({ type: 'delta', text: part });
+        }
+        text += delta.content ?? '';
+        for (const call of delta.tool_calls ?? []) {
+            const index = call.index ?? Math.max(calls.length - 1, 0);
+            calls[index] ??= { id: '', name: '', arguments: '' };
+            calls[index].id += call.id ?? '';
+            calls[index].name += call.function?.name ?? '';
+            calls[index].arguments += call.function?.arguments ?? '';
+        }
+        if (choice.finish_reason) finish = choice.finish_reason;
+    });
+    const content = text ? [{ type: 'text', text }] : [];
+    calls.forEach((call, index) => {
+        let input = {};
+        try {
+            input = JSON.parse(call.arguments);
+        } catch {}
+        // Some providers leave the id out; it must be unique in the conversation.
+        content.push({ type: 'tool_use', id: call.id || `call_${Date.now()}_${index}`, name: call.name, input });
+    });
+    // Some providers finish with "stop" even after tool calls.
+    const stop = calls.length ? 'tool_use' : ({ length: 'max_tokens', content_filter: 'refusal' }[finish] ?? 'end_turn');
+    return { content, stop_reason: stop };
+}
+
+const imagePart = (block) => ({ type: 'image_url', image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` } });
+
+// Turns the conversation into Chat Completions messages. Thinking is left out.
+function openaiMessages(system, history) {
+    const result = [{ role: 'system', content: system }];
+    for (const message of history) {
+        if (message.role === 'assistant') {
+            const text = message.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+            const calls = message.content
+                .filter((b) => b.type === 'tool_use')
+                .map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input) } }));
+            result.push({ role: 'assistant', content: text, ...(calls.length && { tool_calls: calls }) });
+            continue;
+        }
+        const parts = [];
+        for (const block of message.content) {
+            if (block.type === 'tool_result') {
+                const items = Array.isArray(block.content) ? block.content : [{ type: 'text', text: block.content }];
+                const text = items.filter((item) => item.text !== undefined).map((item) => item.text).join('\n');
+                result.push({ role: 'tool', tool_call_id: block.tool_use_id, content: text });
+                // Tool messages only take text, so pictures follow in a user message.
+                parts.push(...items.filter((item) => item.type === 'image').map(imagePart));
+            } else if (block.type === 'image') {
+                parts.push(imagePart(block));
+            } else {
+                parts.push({ type: 'text', text: block.text });
+            }
+        }
+        if (parts.length) result.push({ role: 'user', content: parts });
+    }
+    return result;
+}
+
+async function complete(current, system, history) {
+    const { provider, url, key, model, effort, thinking } = current;
+    if (provider.anthropic) {
+        const body = {
+            model,
+            max_tokens: 64000,
+            stream: true,
+            system,
+            tools: definitions(),
+            messages: history,
+            thinking: { type: 'adaptive', display: thinking ? 'summarized' : 'omitted' },
+            output_config: { effort },
+        };
+        // Haiku has no server-side fallback for refusals.
+        if (model !== 'claude-haiku-5-5') body.fallbacks = 'default';
+        const response = await request(provider, `${url}/v1/messages`, {
+            method: 'POST',
+            headers: { ...headers(provider, key), 'anthropic-beta': 'server-side-fallback-2026-07-01', 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        return readAnthropic(provider, response, thinking);
+    }
+    const tools = definitions().map((tool) => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.input_schema } }));
+    const body = { model, stream: true, tools, messages: openaiMessages(system, history) };
+    if (effort !== 'default') {
+        if (provider.id === 'openrouter') body.reasoning = { effort };
+        else body.reasoning_effort = effort;
+    }
+    const response = await request(provider, `${url}/chat/completions`, {
+        method: 'POST',
+        headers: { ...headers(provider, key), 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    return readOpenai(provider, response, thinking);
+}
+
 async function run(history) {
+    const current = settings();
+    const system = current.instructions ? `${SYSTEM}\n\nInstructions from the user:\n${current.instructions}` : SYSTEM;
     for (let step = 0; step < MAX_STEPS; step++) {
-        const response = await complete(history);
+        const response = await complete(current, system, history);
         history.push({ role: 'assistant', content: response.content });
-        if (response.stop_reason === 'refusal') throw 'Claude declined to answer this.';
+        if (response.stop_reason === 'refusal') throw 'The model declined to answer this.';
         if (response.stop_reason === 'max_tokens') throw 'The answer was too long and was cut off.';
         if (response.stop_reason !== 'tool_use') return;
         const results = [];
@@ -181,19 +354,33 @@ async function run(history) {
         }
         history.push({ role: 'user', content: results });
     }
-    throw 'Claude stopped after too many steps.';
+    throw 'The model stopped after too many steps.';
 }
 
-export async function send({ text, images }) {
-    if (!publicSettings().available) throw 'The AI assistant is not available.';
+async function sendMessage(text, images) {
+    if (!isAvailable(settings())) throw 'The AI sidebar is not available.';
     // Images are base64 JPEGs.
     const content = images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
     if (text) content.push({ type: 'text', text });
     if (!content.length) throw 'Write a message or add a picture.';
-    const history = [...messages, { role: 'user', content }];
+    const history = [...chat.messages, { role: 'user', content }];
     try {
         await run(history);
     } finally {
-        messages = history;
+        chat.messages = history;
+    }
+}
+
+// The reply and any error arrive as events, followed by a done event.
+export async function send({ text, images }) {
+    emit({ type: 'user', text, images });
+    try {
+        await sendMessage(text, images);
+    } catch (error) {
+        emit({ type: 'error', text: String(error) });
+        throw error;
+    } finally {
+        emit({ type: 'done' });
+        save();
     }
 }

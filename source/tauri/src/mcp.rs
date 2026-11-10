@@ -41,7 +41,7 @@ fn stop(app: &AppHandle) {
 pub fn start(app: &AppHandle) -> Result<(), String> {
     stop(app);
     let settings = settings(app)?;
-    if settings["enabled"] != true {
+    if settings["enabled"] != true || !crate::assistant::enabled(app) {
         return Ok(());
     }
     let port = settings["port"].as_u64().unwrap_or_default() as u16;

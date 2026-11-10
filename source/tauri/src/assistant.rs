@@ -8,53 +8,90 @@ use tauri::async_runtime::Sender;
 use tauri::{AppHandle, Manager, Webview};
 
 use crate::exam;
+use crate::providers::{self, Protocol, Provider, ANTHROPIC_MODELS, PROVIDERS};
 use crate::tools::{call, label, tools};
 
-const MODELS: [&str; 4] = ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5", "claude-fable-5-1"];
-const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
-const DEFAULT_URL: &str = "https://api.anthropic.com";
-const VERSION: &str = "2026-10-21";
 const MAX_STEPS: usize = 20;
 const SYSTEM: &str = "You are an AI assistant that can help the user with using Locus, a math app, and with other excercises. \
 Answer concisely. \
 Use Markdown, and write math in LaTeX between $...$ or $$...$$.";
 
+// A conversation and the events shown for it, so a reloaded page can show it again.
+#[derive(Default)]
+struct Chat {
+    messages: Vec<Value>,
+    events: Vec<Value>,
+}
+
 #[derive(Default)]
 pub struct Assistant {
-    // One conversation per chat, keyed by the label of its webview.
-    messages: Mutex<HashMap<String, Vec<Value>>>,
+    // One chat per webview, keyed by its label.
+    chats: Mutex<HashMap<String, Chat>>,
     pub(crate) pending: Mutex<HashMap<u64, Sender<String>>>,
     pub(crate) next: AtomicU64,
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("claude.json"))
+    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("ai.json"))
 }
 
-fn settings(app: &AppHandle) -> Result<Value, String> {
-    let saved = std::fs::read_to_string(settings_path(app)?)
+fn saved(app: &AppHandle) -> Result<Value, String> {
+    Ok(std::fs::read_to_string(settings_path(app)?)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .unwrap_or_default();
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({})))
+}
+
+fn provider(saved: &Value) -> &'static Provider {
+    providers::find(saved["provider"].as_str().unwrap_or_default()).unwrap_or(&PROVIDERS[0])
+}
+
+fn key<'a>(saved: &'a Value, provider: &Provider) -> &'a str {
+    saved["keys"][provider.id].as_str().unwrap_or_default()
+}
+
+fn url<'a>(saved: &'a Value, provider: &'a Provider) -> &'a str {
+    saved["urls"][provider.id].as_str().filter(|url| !url.is_empty()).unwrap_or(provider.url)
+}
+
+// Whether a provider has what it needs for a request.
+fn ready(saved: &Value, provider: &Provider) -> bool {
+    !url(saved, provider).is_empty() && (!provider.needs_key || !key(saved, provider).is_empty())
+}
+
+// The settings of the chat, with defaults for anything missing or no longer valid.
+fn settings(app: &AppHandle) -> Result<Value, String> {
+    let saved = saved(app)?;
+    let provider = provider(&saved);
+    let model = saved["model"].as_str().unwrap_or_default();
+    let model = match provider.protocol {
+        Protocol::Anthropic if !ANTHROPIC_MODELS.contains(&model) => ANTHROPIC_MODELS[0],
+        _ => model,
+    };
+    let effort = saved["effort"].as_str().filter(|e| provider.efforts().contains(e)).unwrap_or(provider.default_effort());
     Ok(json!({
-        "key": saved["key"].as_str().unwrap_or_default(),
-        "model": saved["model"].as_str().filter(|m| MODELS.contains(m)).unwrap_or(MODELS[0]),
-        "effort": saved["effort"].as_str().filter(|e| EFFORTS.contains(e)).unwrap_or("medium"),
-        "url": saved["url"].as_str().filter(|u| !u.is_empty()).unwrap_or(DEFAULT_URL),
-        "thinking": saved["thinking"].as_str().unwrap_or("true"),
+        "enabled": saved["enabled"].as_bool().unwrap_or(true),
+        "sidebar": saved["sidebar"].as_bool().unwrap_or(false),
+        "provider": provider.id,
+        "key": key(&saved, provider),
+        "url": url(&saved, provider),
+        "ready": ready(&saved, provider),
+        "model": model,
+        "effort": effort,
+        "thinking": saved["thinking"].as_bool().unwrap_or(true),
         "instructions": saved["instructions"].as_str().unwrap_or_default(),
-        "enabled": saved["enabled"].as_str().unwrap_or("false"),
     }))
 }
 
-// Whether the assistant is turned on and set up, and allowed in a running exam.
-fn available(app: &AppHandle) -> Result<bool, String> {
-    let settings = settings(app)?;
-    Ok(settings["enabled"] == "true" && settings["key"] != "" && exam::assistant_enabled(app))
+// Whether AI features are turned on at all.
+pub fn enabled(app: &AppHandle) -> bool {
+    saved(app).is_ok_and(|saved| saved["enabled"].as_bool().unwrap_or(true))
+}
+
+// Whether chats can be used: AI features are on, a model is set up, and a running exam allows it.
+fn available(settings: &Value, app: &AppHandle) -> bool {
+    settings["enabled"] == true && settings["ready"] == true && settings["model"] != "" && exam::assistant_enabled(app)
 }
 
 // Lets the app windows show or hide the assistant after a change.
@@ -66,82 +103,93 @@ pub fn refresh(app: &AppHandle) {
     }
 }
 
-// Returns the settings without the key itself, so it never reaches a webview.
+// Returns the settings without the keys themselves, so they never reach a webview.
+// `key` and `url` are those of the chat's provider.
 #[tauri::command]
 pub fn assistant_settings(app: AppHandle, webview: Webview) -> Result<Value, String> {
     crate::plugins::controls(&webview)?;
-    let settings = settings(&app)?;
-    Ok(json!({
-        "key": settings["key"] != "",
-        "model": settings["model"],
-        "effort": settings["effort"],
-        "url": settings["url"],
-        "thinking": settings["thinking"] == "true",
-        "instructions": settings["instructions"],
-        "enabled": settings["enabled"] == "true",
-        "available": available(&app)?,
-    }))
+    let saved = saved(&app)?;
+    let mut settings = settings(&app)?;
+    settings["key"] = json!(settings["key"] != "");
+    settings["available"] = json!(available(&settings, &app));
+    settings["providers"] = PROVIDERS
+        .iter()
+        .map(|provider| {
+            json!({
+                "id": provider.id,
+                "name": provider.name,
+                "url": url(&saved, provider),
+                "defaultUrl": provider.url,
+                "key": !key(&saved, provider).is_empty(),
+                "needsKey": provider.needs_key,
+                "ready": ready(&saved, provider),
+                "efforts": provider.efforts(),
+            })
+        })
+        .collect();
+    Ok(settings)
 }
 
-// Checks the key with a cheap request, so a wrong key is caught on the setup page.
-async fn check_key(url: &Value, key: &str) -> Result<(), String> {
-    let response = reqwest::Client::new()
-        .get(format!("{}/v1/models?limit=1", url.as_str().unwrap_or_default()))
-        .header("x-api-key", key)
-        .header("anthropic-version", VERSION)
-        .send()
-        .await
-        .map_err(|_| "Could not reach Anthropic. Check the internet connection.")?;
-    match response.status().as_u16() {
-        200 => Ok(()),
-        401 | 403 => Err("This API key was not accepted.".into()),
-        _ => Err(error_message(response.json().await.unwrap_or_default())),
-    }
-}
-
-fn error_message(data: Value) -> String {
-    data["error"]["message"]
-        .as_str()
-        .unwrap_or("The request to Claude failed.")
-        .into()
-}
-
+// Changes one setting. `key` and `url` belong to the given provider, or to the chat's provider.
 #[tauri::command]
 pub async fn assistant_set(
     app: AppHandle,
     webview: Webview,
     name: String,
     value: String,
+    provider: Option<String>,
 ) -> Result<(), String> {
     crate::plugins::controls(&webview)?;
     let value = if name == "instructions" { value.trim() } else { value.trim().trim_end_matches('/') };
-    let mut settings = settings(&app)?;
-    if name == "key" && !value.is_empty() {
-        check_key(&settings["url"], value).await?;
-    }
-    let valid = match name.as_str() {
-        "key" => true,
-        "url" => value.is_empty() || value.starts_with("http://") || value.starts_with("https://"),
-        "model" => MODELS.contains(&value),
-        "effort" => EFFORTS.contains(&value),
-        "thinking" | "enabled" => matches!(value, "true" | "false"),
-        "instructions" => true,
-        _ => false,
+    let mut saved = saved(&app)?;
+    let target = match provider {
+        Some(id) => providers::find(&id).ok_or("Unknown provider.")?,
+        None => self::provider(&saved),
     };
-    if !valid {
-        return Err("Invalid assistant setting.".into());
+    match name.as_str() {
+        "key" => {
+            if !value.is_empty() {
+                target.models(url(&saved, target), value).await?;
+            }
+            saved["keys"][target.id] = json!(value);
+        }
+        "url" if value.is_empty() || value.starts_with("http://") || value.starts_with("https://") => {
+            saved["urls"][target.id] = json!(value);
+        }
+        // Another provider has other models and efforts.
+        "provider" if providers::find(value).is_some() => {
+            saved["provider"] = json!(value);
+            saved["model"] = json!("");
+            saved["effort"] = json!("");
+        }
+        "model" | "effort" | "instructions" => saved[&name] = json!(value),
+        "enabled" | "sidebar" | "thinking" if matches!(value, "true" | "false") => saved[&name] = json!(value == "true"),
+        _ => return Err("Invalid AI setting.".into()),
     }
-    settings[name] = json!(value);
     let path = settings_path(&app)?;
     std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(path, settings.to_string()).map_err(|e| e.to_string())?;
+    std::fs::write(path, saved.to_string()).map_err(|e| e.to_string())?;
+    if name == "enabled" {
+        crate::mcp::start(&app)?;
+    }
     refresh(&app);
     Ok(())
 }
 
+// The models a provider offers, which also checks its key and URL.
+#[tauri::command]
+pub async fn assistant_models(app: AppHandle, webview: Webview, provider: String) -> Result<Vec<String>, String> {
+    crate::plugins::controls(&webview)?;
+    let saved = saved(&app)?;
+    let provider = providers::find(&provider).ok_or("Unknown provider.")?;
+    if !ready(&saved, provider) {
+        return Err(format!("Set up {} under Model providers first.", provider.name));
+    }
+    provider.models(url(&saved, provider), key(&saved, provider)).await
+}
+
 pub fn end(app: &AppHandle) {
-    let state = app.state::<Assistant>();
-    state.messages.lock().unwrap().clear();
+    app.state::<Assistant>().chats.lock().unwrap().clear();
     for label in crate::session::labels(app) {
         if let Some(view) = app.get_webview(&label) {
             let _ = view.eval("window.locusAssistantReset && window.locusAssistantReset()");
@@ -152,137 +200,58 @@ pub fn end(app: &AppHandle) {
 #[tauri::command]
 pub fn assistant_reset(app: AppHandle, webview: Webview) -> Result<(), String> {
     crate::plugins::controls(&webview)?;
-    app.state::<Assistant>()
-        .messages
-        .lock()
-        .unwrap()
-        .remove(webview.label());
+    app.state::<Assistant>().chats.lock().unwrap().remove(webview.label());
     Ok(())
 }
 
-// Sends a reply event to the chat that asked, a plugin page or the assistant view in an app window.
+// The events of this webview's chat, to show it again after the page loaded another app.
+#[tauri::command]
+pub fn assistant_history(app: AppHandle, webview: Webview) -> Result<Vec<Value>, String> {
+    crate::plugins::controls(&webview)?;
+    let chats = app.state::<Assistant>();
+    let chats = chats.chats.lock().unwrap();
+    Ok(chats.get(webview.label()).map(|chat| chat.events.clone()).unwrap_or_default())
+}
+
+// Keeps an event for the chat's history and sends it to the chat, a plugin page or the assistant view in an app window.
 fn emit(app: &AppHandle, chat: &str, event: Value) {
+    {
+        let state = app.state::<Assistant>();
+        let mut chats = state.chats.lock().unwrap();
+        let events = &mut chats.entry(chat.into()).or_default().events;
+        // Deltas are joined, so the history does not keep one event per token.
+        match events.last_mut() {
+            Some(last) if last["type"] == "delta" && event["type"] == "delta" => {
+                last["text"] = json!(last["text"].as_str().unwrap_or_default().to_owned() + event["text"].as_str().unwrap_or_default());
+            }
+            _ => events.push(event.clone()),
+        }
+    }
     if let Some(view) = app.get_webview(chat) {
-        let _ = view.eval(format!(
-            "window.assistantEvent && window.assistantEvent({event})"
-        ));
+        let _ = view.eval(format!("window.assistantEvent && window.assistantEvent({event})"));
     }
 }
 
-fn append(block: &mut Value, field: &str, text: &Value) {
-    let text =
-        block[field].as_str().unwrap_or_default().to_owned() + text.as_str().unwrap_or_default();
-    block[field] = json!(text);
-}
-
-// Rebuilds the message from stream events and forwards text and thinking to the chat.
-fn handle(app: &AppHandle, chat: &str, message: &mut Value, event: Value, thinking: bool) -> Result<(), String> {
-    match event["type"].as_str().unwrap_or_default() {
-        "content_block_start" => {
-            let block = event["content_block"].clone();
-            if block["type"] == "text" || (thinking && block["type"] == "thinking") {
-                emit(app, chat, json!({"type": "block", "kind": block["type"]}));
-            }
-            message["content"].as_array_mut().unwrap().push(block);
-        }
-        "content_block_delta" => {
-            let block =
-                &mut message["content"][event["index"].as_u64().unwrap_or_default() as usize];
-            let delta = &event["delta"];
-            let field = match delta["type"].as_str().unwrap_or_default() {
-                "text_delta" => "text",
-                "thinking_delta" => "thinking",
-                "signature_delta" => "signature",
-                "input_json_delta" => "partial_json",
-                _ => return Ok(()),
-            };
-            append(block, field, &delta[field]);
-            if field == "text" || (thinking && field == "thinking") {
-                emit(app, chat, json!({"type": "delta", "text": delta[field]}));
-            }
-        }
-        "content_block_stop" => {
-            let block =
-                &mut message["content"][event["index"].as_u64().unwrap_or_default() as usize];
-            if let Some(json) = block.as_object_mut().and_then(|b| b.remove("partial_json")) {
-                block["input"] =
-                    serde_json::from_str(json.as_str().unwrap_or("{}")).unwrap_or(json!({}));
-            }
-        }
-        "message_delta" => message["stop_reason"] = event["delta"]["stop_reason"].clone(),
-        "error" => return Err(error_message(event)),
-        _ => {}
-    }
-    Ok(())
-}
-
-async fn complete(app: &AppHandle, chat: &str, target: &str, messages: &[Value]) -> Result<Value, String> {
+async fn run(app: &AppHandle, chat: &str, messages: &mut Vec<Value>) -> Result<(), String> {
     let settings = settings(app)?;
-    let thinking = settings["thinking"] == "true";
+    let provider = providers::find(settings["provider"].as_str().unwrap_or_default()).unwrap_or(&PROVIDERS[0]);
     let instructions = settings["instructions"].as_str().unwrap_or_default();
     let system = if instructions.is_empty() {
         SYSTEM.to_owned()
     } else {
         format!("{SYSTEM}\n\nInstructions from the user:\n{instructions}")
     };
-    let mut body = json!({
-        "model": settings["model"],
-        "max_tokens": 64000,
-        "stream": true,
-        "system": system,
-        "tools": tools(app, target),
-        "messages": messages,
-        "thinking": {"type": "adaptive", "display": if thinking { "summarized" } else { "omitted" }},
-        "output_config": {"effort": settings["effort"]},
-    });
-    // Haiku has no server-side fallback for refusals.
-    if settings["model"] != "claude-haiku-5-5" {
-        body["fallbacks"] = json!("default");
-    }
-    let mut response = reqwest::Client::new()
-        .post(format!("{}/v1/messages", settings["url"].as_str().unwrap_or_default()))
-        .header("x-api-key", settings["key"].as_str().unwrap_or_default())
-        .header("anthropic-version", VERSION)
-        .header("anthropic-beta", "server-side-fallback-2026-07-01")
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| "Could not reach Anthropic. Check the internet connection.")?;
-    if !response.status().is_success() {
-        return Err(error_message(response.json().await.unwrap_or_default()));
-    }
-    let mut message = json!({"content": []});
-    let mut buffer = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "The connection to Anthropic was lost.")?
-    {
-        buffer.extend_from_slice(&chunk);
-        while let Some(end) = buffer.windows(2).position(|w| w == b"\n\n") {
-            let event: Vec<u8> = buffer.drain(..end + 2).collect();
-            for data in String::from_utf8_lossy(&event)
-                .lines()
-                .filter_map(|line| line.strip_prefix("data: "))
-            {
-                let event = serde_json::from_str(data).map_err(|e| e.to_string())?;
-                handle(app, chat, &mut message, event, thinking)?;
-            }
-        }
-    }
-    Ok(message)
-}
-
-async fn run(app: &AppHandle, chat: &str, messages: &mut Vec<Value>) -> Result<(), String> {
     // A chat in an app window works on that window, a plugin's chat on the window used last.
     let target = if crate::session::is_main(chat) { chat.to_string() } else { crate::session::active(app) };
     for _ in 0..MAX_STEPS {
-        let response = complete(app, chat, &target, messages).await?;
+        let response = provider
+            .complete(&settings, &system, &tools(app, &target), messages, |event| emit(app, chat, event))
+            .await?;
         let content = response["content"].as_array().cloned().unwrap_or_default();
         messages.push(json!({"role": "assistant", "content": content}));
         match response["stop_reason"].as_str() {
             Some("tool_use") => {}
-            Some("refusal") => return Err("Claude declined to answer this.".into()),
+            Some("refusal") => return Err("The model declined to answer this.".into()),
             Some("max_tokens") => return Err("The answer was too long and was cut off.".into()),
             _ => return Ok(()),
         }
@@ -304,19 +273,12 @@ async fn run(app: &AppHandle, chat: &str, messages: &mut Vec<Value>) -> Result<(
         }
         messages.push(json!({"role": "user", "content": results}));
     }
-    Err("Claude stopped after too many steps.".into())
+    Err("The model stopped after too many steps.".into())
 }
 
-#[tauri::command]
-pub async fn assistant_send(
-    app: AppHandle,
-    webview: Webview,
-    text: String,
-    images: Vec<String>,
-) -> Result<(), String> {
-    crate::plugins::controls(&webview)?;
-    if !available(&app)? {
-        return Err("The AI assistant is not available.".into());
+async fn send(app: &AppHandle, chat: &str, text: String, images: Vec<String>) -> Result<(), String> {
+    if !available(&settings(app)?, app) {
+        return Err("The AI sidebar is not available.".into());
     }
     // Images are base64 JPEGs.
     let mut content: Vec<Value> = images
@@ -329,21 +291,27 @@ pub async fn assistant_send(
     if content.is_empty() {
         return Err("Write a message or add a picture.".into());
     }
-    let chat = webview.label();
-    let mut messages = app
-        .state::<Assistant>()
-        .messages
-        .lock()
-        .unwrap()
-        .get(chat)
-        .cloned()
-        .unwrap_or_default();
+    let mut messages = {
+        let state = app.state::<Assistant>();
+        let chats = state.chats.lock().unwrap();
+        chats.get(chat).map(|chat| chat.messages.clone()).unwrap_or_default()
+    };
     messages.push(json!({"role": "user", "content": content}));
-    let result = run(&app, chat, &mut messages).await;
-    app.state::<Assistant>()
-        .messages
-        .lock()
-        .unwrap()
-        .insert(chat.into(), messages);
+    let result = run(app, chat, &mut messages).await;
+    app.state::<Assistant>().chats.lock().unwrap().entry(chat.into()).or_default().messages = messages;
+    result
+}
+
+// The reply and any error arrive as events, followed by a done event.
+#[tauri::command]
+pub async fn assistant_send(app: AppHandle, webview: Webview, text: String, images: Vec<String>) -> Result<(), String> {
+    crate::plugins::controls(&webview)?;
+    let chat = webview.label();
+    emit(&app, chat, json!({"type": "user", "text": text, "images": images}));
+    let result = send(&app, chat, text, images).await;
+    if let Err(error) = &result {
+        emit(&app, chat, json!({"type": "error", "text": error}));
+    }
+    emit(&app, chat, json!({"type": "done"}));
     result
 }

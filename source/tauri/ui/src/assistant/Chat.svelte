@@ -73,7 +73,7 @@
         {/if}
     {:else}
         <p class="m-auto max-w-[280px] text-center leading-normal text-muted-foreground">
-            Ask Claude about mathematics or Locus. It can also read and change your construction.
+            Ask about mathematics or Locus. The AI can also read and change your construction.
         </p>
     {/each}
     {#if assistant.busy}
@@ -94,7 +94,7 @@
             bind:ref={input}
             bind:value={text}
             rows={1}
-            placeholder="Message Claude"
+            placeholder="Message"
             aria-label="Message"
             class="max-h-36 min-h-9 resize-none"
             {onkeydown}

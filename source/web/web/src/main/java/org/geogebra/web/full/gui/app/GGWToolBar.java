@@ -215,7 +215,7 @@ public final class GGWToolBar extends Composite
 	private void addAssistantButton() {
 		assistantButton = new StandardButton(
 				MaterialDesignResources.INSTANCE.chat().withFill("#999"), null, 32);
-		assistantButton.setTitle(app.getLocalization().getMenu("AI assistant"));
+		assistantButton.setTitle(app.getLocalization().getMenu("AI sidebar"));
 		assistantButton.addFastClickHandler(source -> ((AppWFull) app).toggleAssistant());
 		assistantButton.setVisible(AssistantPanel.isEnabled());
 		rightButtonPanel.add(assistantButton);

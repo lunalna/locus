@@ -8,6 +8,8 @@ const commands = {
     assistant_set: assistant.set,
     assistant_reset: assistant.reset,
     assistant_send: assistant.send,
+    assistant_history: assistant.history,
+    assistant_models: assistant.models,
     library_list: library.list,
     library_activate: library.activate,
     library_remove: library.remove,
