@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "catppuccin-macchiato",
+  "name": "Catppuccin Macchiato",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#24273A",
+  "foreground": "#CAD3F5",
+  "colors": {
+    "primary-100": "#34334D",
+    "primary-200": "#484263",
+    "primary-300": "#685A89",
+    "primary-400": "#9279BA",
+    "primary-500": "#AF8FDC",
+    "primary-600": "#C6A0F6",
+    "primary-700": "#D7BCF9",
+    "primary-800": "#E8D9FB",
+    "primary-900": "#F9F6FE",
+    "highlight": "#C6A0F6",
+    "highlight-light": "#484263"
+  }
+}

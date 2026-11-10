@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "rose-pine",
+  "name": "Rosé Pine",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#191724",
+  "foreground": "#E0DEF4",
+  "colors": {
+    "primary-100": "#2A2538",
+    "primary-200": "#3F374F",
+    "primary-300": "#615376",
+    "primary-400": "#8D79A9",
+    "primary-500": "#AC93CC",
+    "primary-600": "#C4A7E7",
+    "primary-700": "#D6C1EE",
+    "primary-800": "#E7DCF5",
+    "primary-900": "#F9F6FD",
+    "highlight": "#C4A7E7",
+    "highlight-light": "#3F374F"
+  }
+}

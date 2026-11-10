@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Locus",
+  "version": "0.1.0",
+  "identifier": "xyz.lunalna.locus",
+  "build": {
+    "frontendDist": "../web/web/build/desktop",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": { "script": "pnpm dev", "cwd": "ui", "wait": false }
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
+    "windows": []
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "iOS": { "minimumSystemVersion": "15.0", "developmentTeam": "Y9GX8Q84Q8" },
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico", "icons/Locus.icon"]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM1OEVBRDA2ODI1N0I2REYKUldUZnRsZUNCcTJPeFYxY2tITjBYRVlmaSsyWEZnWlNLSWcreit3aHAwZldZZGNKTDJGemwrOTIK",
+      "endpoints": ["https://github.com/lunalna/locus/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  }
+}

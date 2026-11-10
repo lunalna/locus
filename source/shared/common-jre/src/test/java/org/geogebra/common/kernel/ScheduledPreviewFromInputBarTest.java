@@ -1,0 +1,151 @@
+/*
+ * GeoGebra - Dynamic Mathematics for Everyone
+ * Copyright (c) GeoGebra GmbH, Altenbergerstr. 69, 4040 Linz, Austria
+ * https://www.geogebra.org
+ *
+ * This file is licensed by GeoGebra GmbH under the EUPL 1.2 licence and
+ * may be used under the EUPL 1.2 in compatible projects (see Article 5
+ * and the Appendix of EUPL 1.2 for details).
+ * You may obtain a copy of the licence at:
+ * https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+ *
+ * Note: The overall GeoGebra software package is free to use for
+ * non-commercial purposes only.
+ * See https://www.geogebra.org/license for full licensing details
+ */
+
+package org.geogebra.common.kernel;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.geogebra.common.BaseUnitTest;
+import org.geogebra.common.kernel.geos.GeoElement;
+import org.geogebra.common.main.PreviewFeature;
+import org.geogebra.test.annotation.Issue;
+import org.geogebra.test.commands.ErrorAccumulator;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class ScheduledPreviewFromInputBarTest extends BaseUnitTest {
+
+	private ErrorAccumulator errorHandler;
+	private ScheduledPreviewFromInputBar preview;
+
+	@BeforeEach
+	void setupPreview() {
+		preview = new ScheduledPreviewFromInputBar(getKernel(), Integer.MAX_VALUE);
+		errorHandler = new ErrorAccumulator();
+		PreviewFeature.setPreviewFeaturesEnabled(true);
+	}
+
+	@AfterEach
+	void tearDown() {
+		PreviewFeature.setPreviewFeaturesEnabled(false);
+	}
+
+	@Test
+	void shouldValidate() {
+		preview.updatePreviewFromInputBar("a=1", errorHandler);
+		assertEquals("", errorHandler.getErrors());
+		preview.updatePreviewFromInputBar("a=", errorHandler);
+		assertEquals("Please check your input", errorHandler.getErrors());
+		preview.updatePreviewFromInputBar("a=2", errorHandler);
+		assertEquals("", errorHandler.getErrorsSinceReset());
+		preview.updatePreviewFromInputBar("a=1/(1,1,1)", errorHandler);
+		assertEquals("Illegal division \n" + "1 / (1, 1, 1) ", errorHandler.getErrorsSinceReset());
+	}
+
+	@Test
+	void shouldRemovePreviousPreviewFromConstruction() {
+		GeoElement r = add("R=(1,1)");
+		assertEquals(0, getConstruction().getAlgoList().size());
+		preview.updatePreviewFromInputBar("2R", errorHandler);
+		preview.updatePreviewFromInputBar("Ri", errorHandler);
+		assertEquals(1, getConstruction().getAlgoList().size());
+		assertEquals(1, r.getAlgorithmList().size());
+		preview.clear();
+		assertEquals(0, getConstruction().getAlgoList().size());
+		assertEquals(0, r.getAlgorithmList().size());
+	}
+
+	@Test
+	void shouldRemovePreviousPreviewAfterRedefine() {
+		add("R=(1,1)");
+		assertEquals(0, getConstruction().getAlgoList().size());
+		preview.updatePreviewFromInputBar("R=Root(x-4)", errorHandler);
+		preview.updatePreviewFromInputBar("R=Root(x^2-4)", errorHandler);
+		assertEquals(1, getConstruction().getAlgoList().size());
+		preview.clear();
+		assertEquals(0, getConstruction().getAlgoList().size());
+	}
+
+	@Test
+	void shouldValidateRedefinition() {
+		add("a=2");
+		preview.updatePreviewFromInputBar("a=1", errorHandler);
+		assertEquals("", errorHandler.getErrors());
+		preview.updatePreviewFromInputBar("a=1+", errorHandler);
+		assertEquals("Please check your input", errorHandler.getErrors());
+		preview.updatePreviewFromInputBar("a=1/(1,1,1)", errorHandler);
+		assertEquals("Illegal division \n1 / (1, 1, 1) ", errorHandler.getErrorsSinceReset());
+	}
+
+	@Test
+	void shouldUpdateMultiValued() {
+		GeoElement point = add("A=(1,1)");
+		preview.updatePreviewFromInputBar("A=Root(x-4)", errorHandler);
+		assertEquals("(4, 0)", point.toValueString(StringTemplate.editTemplate));
+		preview.updatePreviewFromInputBar("A=Root(x^2-4)", errorHandler);
+		assertEquals("(-2, 0)", point.toValueString(StringTemplate.editTemplate));
+	}
+
+	@Test
+	@Issue("APPS-7810")
+	void shouldNotReusePreviousInput() {
+		preview.updatePreviewFromInputBar("1", errorHandler);
+		assertNotNull(preview.getPreview("1"));
+		preview.updatePreviewFromInputBar("2+", errorHandler);
+		assertNull(preview.getPreview("2+"));
+		assertEquals("2+", preview.getInput("2+"));
+		preview.updatePreviewFromInputBar("3", errorHandler);
+		assertNotNull(preview.getPreview("3"));
+		preview.updatePreviewFromInputBar("", errorHandler);
+		assertNull(preview.getPreview(""));
+	}
+
+	@Test
+	@Issue("APPS-8080")
+	void shouldKeepCellRangeListCommittedAfterPreview() {
+		add("A1=1");
+		add("A2=2");
+		preview.updatePreviewFromInputBar("A1:A2", errorHandler);
+		assertNotNull(preview.getPreview("A1:A2"));
+
+		preview.removePreview();
+		assertTrue(preview.isValid());
+
+		add("l1=A1:A2");
+		preview.updatePreviewFromInputBar("", errorHandler);
+		assertEquals("{1, 2}", lookup("l1").toValueString(StringTemplate.defaultTemplate));
+	}
+
+	@Test
+	@Issue("APPS-8080")
+	void shouldKeepCellRangeRedefinitionAfterPreview() {
+		add("A1=1");
+		add("A2=2");
+		GeoElement a = add("a=5");
+		preview.updatePreviewFromInputBar("A1:A2", errorHandler);
+		assertNotNull(preview.getPreview("A1:A2"));
+
+		preview.removePreview();
+		editGeoElement(a, "A1:A2");
+		preview.updatePreviewFromInputBar("", errorHandler);
+
+		assertEquals("{1, 2}", lookup("a").toValueString(StringTemplate.defaultTemplate));
+	}
+}

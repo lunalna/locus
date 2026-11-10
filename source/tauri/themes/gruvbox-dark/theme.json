@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "gruvbox-dark",
+  "name": "Gruvbox Dark",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#282828",
+  "foreground": "#EBDBB2",
+  "colors": {
+    "primary-100": "#3D3126",
+    "primary-200": "#573B25",
+    "primary-300": "#824D22",
+    "primary-400": "#BA641E",
+    "primary-500": "#E0741B",
+    "primary-600": "#FE8019",
+    "primary-700": "#FEA65E",
+    "primary-800": "#FFCCA3",
+    "primary-900": "#FFF2E8",
+    "highlight": "#FE8019",
+    "highlight-light": "#573B25"
+  }
+}

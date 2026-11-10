@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "nord",
+  "name": "Nord",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#2E3440",
+  "foreground": "#D8DEE9",
+  "colors": {
+    "primary-100": "#37424E",
+    "primary-200": "#425360",
+    "primary-300": "#546F7C",
+    "primary-400": "#6B93A2",
+    "primary-500": "#7BACBC",
+    "primary-600": "#88C0D0",
+    "primary-700": "#ACD3DE",
+    "primary-800": "#CFE6EC",
+    "primary-900": "#F3F9FA",
+    "highlight": "#88C0D0",
+    "highlight-light": "#425360"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "catppuccin-frappe",
+  "name": "Catppuccin Frappé",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#303446",
+  "foreground": "#C6D0F5",
+  "colors": {
+    "primary-100": "#3F3F56",
+    "primary-200": "#524B69",
+    "primary-300": "#716189",
+    "primary-400": "#997CB3",
+    "primary-500": "#B48FD0",
+    "primary-600": "#CA9EE6",
+    "primary-700": "#DABBEE",
+    "primary-800": "#EAD8F5",
+    "primary-900": "#FAF5FC",
+    "highlight": "#CA9EE6",
+    "highlight-light": "#524B69"
+  }
+}

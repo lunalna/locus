@@ -1,0 +1,7 @@
+.gradle/
+build/
+.idea/
+hs_err_pid*.log
+dist/
+.DS_Store
+*.code-workspace

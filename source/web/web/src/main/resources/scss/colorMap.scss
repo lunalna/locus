@@ -1,0 +1,24 @@
+// neutral shades
+$neutrals: ("0": #FFFFFF, "100": #FAFAFC, "200": #F3F2F7, "300": #E6E6EB, "400": #D1D0D6,
+	"500": #B4B3BA, "600": #85848A, "700": #6E6D73, "800": #2F2F33, "900": #1C1C1F);
+
+// primary shades, 600 is the accent color; resource packs override the CSS variables
+$primary-defaults: ("100": #FDF2F8, "200": #FBCFE8, "300": #F9A8D4, "400": #F472B6,
+	"500": #EC4899, "600": #DB2777, "700": #BE185D, "800": #831843, "900": #3B0A24);
+$primaries: ();
+@each $shade, $color in $primary-defaults {
+	$primaries: map-merge($primaries, ($shade: var(--locus-primary-#{$shade}, $color)));
+}
+
+@function primary($val) {
+	@return map-get($primaries, #{$val});
+}
+
+// transparent version of a color that may be a CSS variable
+@function alpha($color, $amount) {
+	@return color-mix(in srgb, $color percentage($amount), transparent);
+}
+
+@function neutral($val) {
+	@return map-get($neutrals, #{$val});
+}

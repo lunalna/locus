@@ -1,0 +1,106 @@
+<div id="locusSplash">
+<style>
+@font-face {
+	font-family: Outfit;
+	src: url("fonts/Outfit.ttf");
+	font-weight: 100 900;
+	font-display: block;
+}
+#locusSplash {
+	--fg: #3b0a24;
+	--accent: #db2777;
+	position: fixed;
+	inset: 0;
+	z-index: 2000000;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	background: #ffffff;
+	transition: opacity 0.3s;
+}
+#locusSplash.done {
+	opacity: 0;
+	pointer-events: none;
+}
+#locusSplash svg {
+	width: 140px;
+	height: 140px;
+	overflow: visible;
+}
+#locusSplash .curve {
+	stroke-dasharray: 1;
+	stroke-dashoffset: 1;
+	animation: locusDraw 0.9s ease-out forwards;
+}
+#locusSplash .name {
+	font: 600 40px Outfit, system-ui, sans-serif;
+	background: linear-gradient(100deg, var(--fg) 40%, var(--accent) 50%, var(--fg) 60%);
+	background-size: 300% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: locusShimmer 2.4s linear infinite;
+}
+@keyframes locusDraw {
+	to { stroke-dashoffset: 0; }
+}
+@keyframes locusShimmer {
+	from { background-position: 100% 0; }
+	to { background-position: 0 0; }
+}
+</style>
+<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+	<path d="M3 20h18" stroke="var(--fg)"/>
+	<path class="curve" d="M3 15C6 4 11 4 14 10s5 6 7-1" stroke="var(--accent)" pathLength="1"/>
+	<line class="drop" x1="3" y1="15" x2="3" y2="20" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="0.01 2" opacity="0.6"/>
+	<circle class="foot" cx="3" cy="20" r="1.8" fill="var(--fg)"/>
+	<circle class="dot" cx="3" cy="15" r="1.8" fill="var(--accent)"/>
+</svg>
+<div class="name"><!--APP NAME--></div>
+<script>
+(() => {
+	const splash = document.getElementById("locusSplash");
+	const theme = window.locusTheme || {background: "#ffffff"};
+	const bg = parseInt(theme.background.slice(1), 16);
+	const dark = ((bg >> 16) * 299 + (bg >> 8 & 255) * 587 + (bg & 255) * 114) < 128000;
+	splash.style.background = theme.background;
+	splash.style.setProperty("--fg", theme.foreground || (dark ? "#f7eef3" : "#3b0a24"));
+	splash.style.setProperty("--accent", dark ? "#f472b6" : "#db2777");
+
+	const curve = splash.querySelector(".curve");
+	const dot = splash.querySelector(".dot");
+	const foot = splash.querySelector(".foot");
+	const drop = splash.querySelector(".drop");
+	const length = curve.getTotalLength();
+	const start = performance.now();
+	const frame = (now) => {
+		// the dot follows the curve as it is drawn, then swings back and forth
+		const t = (now - start) / 1000;
+		const s = t < 0.9 ? 1 - Math.pow(1 - t / 0.9, 2) : (Math.cos((t - 0.9) * 1.6) + 1) / 2;
+		const p = curve.getPointAtLength(s * length);
+		dot.setAttribute("cx", p.x);
+		dot.setAttribute("cy", p.y);
+		foot.setAttribute("cx", p.x);
+		drop.setAttribute("x1", p.x);
+		drop.setAttribute("x2", p.x);
+		drop.setAttribute("y1", p.y);
+		if (!splash.classList.contains("done")) {
+			requestAnimationFrame(frame);
+		}
+	};
+	requestAnimationFrame(frame);
+
+	const onLoad = window.ggbAppletOnLoad;
+	window.ggbAppletOnLoad = (...args) => {
+		window.ggbAppletOnLoad = onLoad;
+		splash.classList.add("done");
+		setTimeout(() => splash.remove(), 300);
+		if (onLoad) {
+			onLoad(...args);
+		}
+	};
+})();
+</script>
+</div>

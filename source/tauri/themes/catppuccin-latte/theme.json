@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "catppuccin-latte",
+  "name": "Catppuccin Latte",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#EFF1F5",
+  "foreground": "#4C4F69",
+  "colors": {
+    "primary-100": "#F5EFFE",
+    "primary-200": "#E7D7FC",
+    "primary-300": "#CFB0F9",
+    "primary-400": "#B27EF5",
+    "primary-500": "#9A57F1",
+    "primary-600": "#8839EF",
+    "primary-700": "#6D2EBF",
+    "primary-800": "#52228F",
+    "primary-900": "#361760",
+    "highlight": "#8839EF",
+    "highlight-light": "#E7D7FC"
+  }
+}

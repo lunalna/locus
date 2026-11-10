@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "solarized-dark",
+  "name": "Solarized Dark",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#002B36",
+  "foreground": "#839496",
+  "colors": {
+    "primary-100": "#043546",
+    "primary-200": "#084058",
+    "primary-300": "#105378",
+    "primary-400": "#1A6CA0",
+    "primary-500": "#217EBC",
+    "primary-600": "#268BD2",
+    "primary-700": "#67AEE0",
+    "primary-800": "#A8D1ED",
+    "primary-900": "#E9F3FA",
+    "highlight": "#268BD2",
+    "highlight-light": "#084058"
+  }
+}

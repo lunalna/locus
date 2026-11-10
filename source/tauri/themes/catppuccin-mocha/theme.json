@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "catppuccin-mocha",
+  "name": "Catppuccin Mocha",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#1E1E2E",
+  "foreground": "#CDD6F4",
+  "colors": {
+    "primary-100": "#2A2540",
+    "primary-200": "#3B3256",
+    "primary-300": "#574A7D",
+    "primary-400": "#8A75B8",
+    "primary-500": "#B195E6",
+    "primary-600": "#CBA6F7",
+    "primary-700": "#D9BDFA",
+    "primary-800": "#E8D6FC",
+    "primary-900": "#F5EDFE",
+    "highlight": "#CBA6F7",
+    "highlight-light": "#45395E"
+  }
+}

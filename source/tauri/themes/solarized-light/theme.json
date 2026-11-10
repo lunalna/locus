@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "solarized-light",
+  "name": "Solarized Light",
+  "version": "1.0.0",
+  "author": "Locus",
+  "license": "MIT",
+  "background": "#FDF6E3",
+  "foreground": "#657B83",
+  "colors": {
+    "primary-100": "#EEF6FB",
+    "primary-200": "#D4E8F6",
+    "primary-300": "#A8D1ED",
+    "primary-400": "#72B4E2",
+    "primary-500": "#479CD9",
+    "primary-600": "#268BD2",
+    "primary-700": "#1E6FA8",
+    "primary-800": "#17537E",
+    "primary-900": "#0F3854",
+    "highlight": "#268BD2",
+    "highlight-light": "#D4E8F6"
+  }
+}
