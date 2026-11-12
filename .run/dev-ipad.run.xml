@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Dev: iPad" type="CompoundRunConfigurationType">
+    <toRun name="GWT dev server" type="GradleRunConfiguration" />
+    <toRun name="iPad simulator" type="ShConfigurationType" />
+    <method v="2" />
+  </configuration>
+</component>

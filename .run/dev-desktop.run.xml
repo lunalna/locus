@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Dev: desktop" type="CompoundRunConfigurationType">
+    <toRun name="GWT dev server" type="GradleRunConfiguration" />
+    <toRun name="Desktop app" type="CargoCommandRunConfiguration" />
+    <method v="2" />
+  </configuration>
+</component>
