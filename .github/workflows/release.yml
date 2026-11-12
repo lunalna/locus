@@ -80,6 +80,8 @@ jobs:
           docker build -t "$image:${GITHUB_REF_NAME#v}" -t "$image:latest" -f- dist/web <<'EOF'
           FROM nginx:alpine
           COPY . /usr/share/nginx/html
+          # file names stay the same between releases, so caches have to ask for new versions
+          RUN echo 'add_header Cache-Control "no-cache";' > /etc/nginx/conf.d/cache.conf
           EOF
           docker push --all-tags "$image"
       # Coolify pulls the new image when its deploy webhook is called
