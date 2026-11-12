@@ -19,6 +19,7 @@
     import Mcp from './Mcp.svelte';
     import Performance from './Performance.svelte';
     import Plugins from './Plugins.svelte';
+    import Update from './Update.svelte';
     import ViewSettings from './ViewSettings.svelte';
 
     let { modal, container } = $props();
@@ -168,4 +169,5 @@
     <Details />
     <AiSetup />
     <About {modal} />
+    {#if !web}<Update {modal} />{/if}
 </BitsConfig>

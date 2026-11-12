@@ -101,16 +101,18 @@ publish() {
     local repo=lunalna/locus v
     v=$(version)
     local url="https://github.com/$repo/releases/download/v$v"
-    jq -n --arg v "$v" --arg url "$url" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    local notes
+    notes=$(git tag -l --format="%(contents:body)" "v$v")
+    jq -n --arg v "$v" --arg notes "$notes" --arg url "$url" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --arg mac "$(cat "$DIST/$NAME-macos.app.tar.gz.sig")" \
         --arg win "$(cat "$DIST/$NAME-windows-setup.exe.sig")" '
         {signature: $mac, url: "\($url)/Locus-macos.app.tar.gz"} as $macos |
-        {version: $v, pub_date: $date, platforms: {
+        {version: $v, notes: $notes, pub_date: $date, platforms: {
             "darwin-aarch64": $macos,
             "darwin-x86_64": $macos,
             "windows-x86_64": {signature: $win, url: "\($url)/Locus-windows-setup.exe"}
         }}' > "$DIST/latest.json"
-    gh release create "v$v" --repo "$repo" --title "$NAME $v" --notes "$(git tag -l --format="%(contents:body)" "v$v")" \
+    gh release create "v$v" --repo "$repo" --title "$NAME $v" --notes "$notes" \
         "$DIST/$NAME-macos.zip" "$DIST/$NAME-macos.app.tar.gz" \
         "$DIST/$NAME-windows-setup.exe" "$DIST/latest.json"
 }

@@ -1,5 +1,4 @@
 @import '../settings/settings.css';
-@import '../lib/markdown.css';
 
 /* The markdown styles' colors, from the settings' theme. */
 .embedded {

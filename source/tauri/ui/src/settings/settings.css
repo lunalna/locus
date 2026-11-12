@@ -2,6 +2,7 @@
 @import 'tw-animate-css';
 @import 'shadcn-svelte/tailwind.css';
 @import '../lib/shadow.css';
+@import '../lib/markdown.css';
 
 @theme {
     --font-sans: geogebra-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

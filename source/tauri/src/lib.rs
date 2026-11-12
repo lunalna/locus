@@ -385,6 +385,7 @@ pub fn run() {
         .manage(assistant::Assistant::default())
         .manage(files::Files::default())
         .manage(mcp::Mcp::default())
+        .manage(updater::Pending::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .register_uri_scheme_protocol("pack", |ctx, request| {
@@ -448,6 +449,10 @@ pub fn run() {
             session::window_close,
             session::general_settings,
             session::general_set,
+            #[cfg(desktop)]
+            updater::update_pending,
+            #[cfg(desktop)]
+            updater::update_install,
             #[cfg(target_os = "ios")]
             ios::print
         ])
