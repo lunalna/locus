@@ -28,6 +28,7 @@ import org.geogebra.common.main.App;
 import org.geogebra.common.ownership.GlobalScope;
 import org.geogebra.gwtutil.NavigatorUtil;
 import org.geogebra.web.full.css.MaterialDesignResources;
+import org.geogebra.web.full.gui.LocusPluginEntries;
 import org.geogebra.web.full.gui.exam.ExamUtil;
 import org.geogebra.web.full.gui.menubar.FileMenuW;
 import org.geogebra.web.full.gui.view.assistant.AssistantPanel;
@@ -59,6 +60,7 @@ class NavigationRail extends FlowPanel implements ExamListener {
 	private @Nullable StandardButton btnAssistant;
 	private final FlowPanel contents;
 	private FlowPanel center;
+	private @Nullable FlowPanel pluginButtons;
 	private boolean animating = false;
 	private boolean lastOrientation;
 	private final AppWFull app;
@@ -131,6 +133,9 @@ class NavigationRail extends FlowPanel implements ExamListener {
 			btnAssistant.setVisible(AssistantPanel.isEnabled());
 			center.add(btnAssistant);
 		}
+		pluginButtons = new FlowPanel();
+		center.add(pluginButtons);
+		updatePluginButtons();
 		if (btnMenu != null && !isHeaderExternal()) {
 			center.addStyleName("withMenu");
 		}
@@ -246,6 +251,21 @@ class NavigationRail extends FlowPanel implements ExamListener {
 	/**
 	 * @param visible whether the AI assistant button is shown
 	 */
+	/**
+	 * Shows the commands plugins currently add to the toolbar.
+	 */
+	void updatePluginButtons() {
+		if (pluginButtons == null) {
+			return;
+		}
+		pluginButtons.clear();
+		for (LocusPluginEntries.Entry entry : LocusPluginEntries.get("toolbar")) {
+			StandardButton button = LocusPluginEntries.button(entry, 24, true);
+			button.addStyleName("tabButton");
+			pluginButtons.add(button);
+		}
+	}
+
 	void setAssistantVisible(boolean visible) {
 		if (btnAssistant != null) {
 			btnAssistant.setVisible(visible);

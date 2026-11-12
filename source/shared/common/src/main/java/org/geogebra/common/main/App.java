@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -3031,6 +3032,16 @@ public abstract class App
 	 */
 	public void dispatchEvent(Event evt) {
 		getEventDispatcher().dispatchEvent(evt);
+	}
+
+	/**
+	 * Runs a command of a Locus plugin from a construction's script.
+	 * @param plugin plugin id
+	 * @param command command id
+	 * @param objects names of the objects it gets
+	 */
+	public void runPlugin(String plugin, String command, List<String> objects) {
+		// only the Locus app pages run plugins
 	}
 
 	/**

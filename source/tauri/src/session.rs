@@ -188,6 +188,11 @@ pub fn open(app: &AppHandle, mode: Mode) -> tauri::Result<WebviewWindow> {
             }
             allowed
         })
+        .on_page_load(|webview, event| {
+            if matches!(event.event(), tauri::webview::PageLoadEvent::Started) {
+                crate::plugins::unscripted(webview.app_handle(), webview.label());
+            }
+        })
         .on_new_window(move |url, _| {
             if popup_app.state::<Lockdown>().0.load(Ordering::SeqCst) {
                 exam::record(&popup_app, format!("External window blocked: {url}"));

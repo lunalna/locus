@@ -16,13 +16,16 @@
 
 package org.geogebra.web.full.gui.menubar;
 
+import org.geogebra.web.full.gui.LocusPluginEntries;
 import org.geogebra.web.full.gui.menu.icons.DefaultMenuIconResources;
 import org.geogebra.web.full.gui.menubar.action.LocusPluginsAction;
+import org.geogebra.web.full.main.AppWFull;
+import org.geogebra.web.html5.gui.view.ImageIconSpec;
 import org.geogebra.web.html5.main.AppW;
 import org.geogebra.web.resources.SVGResource;
 
 /**
- * Classic menu entry that opens the Locus plugin command list.
+ * Classic menu entry that opens the Locus plugin command list, or lists the commands plugins add to the menu.
  */
 public final class LocusPluginsMenu extends Submenu {
 
@@ -31,6 +34,23 @@ public final class LocusPluginsMenu extends Submenu {
 	 */
 	public LocusPluginsMenu(AppW app) {
 		super("locusPlugins", app);
+		update();
+	}
+
+	@Override
+	public void update() {
+		clearItems();
+		for (LocusPluginEntries.Entry entry : LocusPluginEntries.get("menu")) {
+			addItem(entry.title, new DefaultMenuAction<>() {
+				@Override
+				public void execute(AppWFull app) {
+					LocusPluginEntries.run(entry, null);
+				}
+			}, LocusPluginEntries.icon(entry));
+		}
+		if (!isEmpty()) {
+			addItem("All plugin commands", new LocusPluginsAction(), new ImageIconSpec(getImage()));
+		}
 	}
 
 	@Override

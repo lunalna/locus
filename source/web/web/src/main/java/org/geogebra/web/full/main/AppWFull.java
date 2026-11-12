@@ -132,6 +132,8 @@ import org.geogebra.web.full.euclidian.quickstylebar.icon.PropertiesIconResource
 import org.geogebra.web.full.exam.ExamControllerIntegrationW;
 import org.geogebra.web.full.gui.CustomizeToolbarGUI;
 import org.geogebra.web.full.gui.GuiManagerW;
+import org.geogebra.web.full.gui.LocusPluginApi;
+import org.geogebra.web.full.gui.LocusPluginEntries;
 import org.geogebra.web.full.gui.MyHeaderPanel;
 import org.geogebra.web.full.gui.SaveControllerW;
 import org.geogebra.web.full.gui.ShareControllerW;
@@ -369,6 +371,11 @@ public class AppWFull extends AppW implements HasKeyboard, MenuViewListener {
 			Js.asPropertyMap(DomGlobal.window).set("locusAssistantUpdate",
 					(JsRunnable) this::updateAssistant);
 		}
+		Js.asPropertyMap(DomGlobal.window).set("locusPluginsUpdate",
+				(JsRunnable) this::updatePlugins);
+		// the plugins may have loaded before the views were built
+		updatePlugins();
+		LocusPluginApi.register(this);
 
 		setPurpose();
 	}
@@ -1499,6 +1506,31 @@ public class AppWFull extends AppW implements HasKeyboard, MenuViewListener {
 		}
 		splitPanelWrapper.setStyleName("assistantOpen", assistantShowing);
 		resizeSplitPanel();
+	}
+
+	@Override
+	public void runPlugin(String plugin, String command, List<String> objects) {
+		LocusPluginEntries.script(plugin, command, objects);
+	}
+
+	/**
+	 * Shows the commands plugins add to the toolbar and the menus after the host page loaded them.
+	 */
+	private void updatePlugins() {
+		if (getToolbar() != null) {
+			getToolbar().updatePluginButtons();
+		}
+		if (menuViewController != null) {
+			menuViewController.updatePluginItems();
+		}
+		if (getGuiManager() == null || getGuiManager().getLayout() == null) {
+			return;
+		}
+		getGuiManager().updateMenubar();
+		ToolbarPanel sidePanel = getGuiManager().getUnbundledToolbar();
+		if (sidePanel != null) {
+			sidePanel.updatePluginButtons();
+		}
 	}
 
 	/**

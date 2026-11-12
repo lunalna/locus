@@ -1,6 +1,6 @@
 <script>
     import { invoke } from '$backend';
-    import { AppWindow, Bot, Bug, Code, Eye, FileText, Globe, GraduationCap, House, PanelRight, PencilRuler, Wifi, Wrench } from '@lucide/svelte';
+    import { AppWindow, Bot, Bug, Code, Eye, FileCode, FileText, Globe, GraduationCap, House, Layers, Paintbrush, PanelRight, PencilRuler, Wifi, Wrench } from '@lucide/svelte';
 
     import { Badge } from '$lib/components/ui/badge';
     import { Button } from '$lib/components/ui/button';
@@ -35,6 +35,9 @@
             ? [
                   ...(plugin.window ? [['Show a window above other apps', AppWindow]] : []),
                   ...(plugin.panel ? [['Show a panel in the app windows', PanelRight]] : []),
+                  ...(plugin.overlay ? [['Draw over the app windows and follow the pointer', Layers]] : []),
+                  ...(plugin.styles ? [['Change how the app windows look', Paintbrush]] : []),
+                  ...(plugin.script ? [['Run its own code in the app windows, with full control of Locus', FileCode]] : []),
                   ...(plugin.permissions ?? []).map((name) => permissionNames[name] ?? [name, Eye]),
                   ...(plugin.network?.length ? [[`Connect to ${plugin.network.join(', ')}`, Wifi]] : []),
                   ...(plugin.tools.length ? [[`Give the AI tools: ${plugin.tools.join(', ')}`, Wrench]] : []),
@@ -93,6 +96,17 @@
                     </div>
                 </div>
 
+                {#if plugin.script}
+                    <p class="text-destructive">
+                        Its code can see and change everything in Locus, including your constructions, settings and other plugins. Only add it if you trust the
+                        author. It does not run during exams, and exams cannot start while it runs.
+                    </p>
+                {/if}
+
+                {#if plugin.supported === false}
+                    <p class="text-destructive">It needs a newer version of Locus and does not run until Locus is updated.</p>
+                {/if}
+
                 {#if !library.adding && plugin.settings?.length}
                     <div class="flex flex-col gap-3">
                         <h3 class="font-medium">Settings</h3>
@@ -108,6 +122,18 @@
                                     <Label for={id}>{setting.label}</Label>
                                     {#if setting.type === 'choice'}
                                         <Choice {id} value={plugin.values[setting.key]} items={setting.options} onchange={(value) => setSetting(setting.key, value)} />
+                                    {:else if setting.type === 'number'}
+                                        <Input
+                                            {id}
+                                            type="number"
+                                            min={setting.min}
+                                            max={setting.max}
+                                            step={setting.step ?? 'any'}
+                                            value={plugin.values[setting.key] ?? ''}
+                                            onchange={(event) => setSetting(setting.key, event.target.valueAsNumber)}
+                                        />
+                                    {:else if setting.type === 'color'}
+                                        <Input {id} type="color" class="w-16 p-1" value={plugin.values[setting.key] ?? '#000000'} onchange={(event) => setSetting(setting.key, event.target.value)} />
                                     {:else}
                                         <Input {id} value={plugin.values[setting.key] ?? ''} onchange={(event) => setSetting(setting.key, event.target.value)} />
                                     {/if}

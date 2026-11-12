@@ -906,6 +906,8 @@ public enum Commands implements CommandsConstants, GetCommand {
 
 	RunUpdateScript(TABLE_SCRIPTING),
 
+	RunPlugin(TABLE_SCRIPTING),
+
 	SetPerspective(TABLE_SCRIPTING),
 
 	StartRecord(TABLE_SCRIPTING),

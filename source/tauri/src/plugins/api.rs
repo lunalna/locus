@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager, Url, Webview};
 use tauri_plugin_dialog::DialogExt;
 
 use super::{caller, emit, label, plugin, window, with, Caller, Plugins};
-use crate::{browser, exam, tools};
+use crate::{browser, exam, session, tools};
 
 #[tauri::command]
 pub fn plugin_window(
@@ -142,7 +142,91 @@ pub fn plugin_view(
     Ok(Value::Null)
 }
 
-// Reads or changes the construction in an app window: the window a panel is in, or the one used last.
+const READ: &str = "construction:read";
+const WRITE: &str = "construction:write";
+
+// The script of a construction action, the permission it needs and whether it changes the construction,
+// which then gets an undo point. Scripts read `args` and return JSON.
+fn script(action: &str) -> Option<(String, &'static str, bool)> {
+    let (body, permission, changes) = match action {
+        "objects" => (
+            "return JSON.stringify(ggbApplet.getAllObjectNames(args.type).map((name) =>
+                 ({ name, type: ggbApplet.getObjectType(name), value: ggbApplet.getValueString(name) })));",
+            READ,
+            false,
+        ),
+        "get" => (
+            "const n = args.name;
+             if (!ggbApplet.exists(n)) throw `There is no object ${n}.`;
+             return JSON.stringify({
+                 name: n, type: ggbApplet.getObjectType(n), value: ggbApplet.getValue(n),
+                 text: ggbApplet.getValueString(n), definition: ggbApplet.getDefinitionString(n),
+                 command: ggbApplet.getCommandString(n), x: ggbApplet.getXcoord(n), y: ggbApplet.getYcoord(n),
+                 color: ggbApplet.getColor(n), visible: ggbApplet.getVisible(n), caption: ggbApplet.getCaption(n),
+                 labelVisible: ggbApplet.getLabelVisible(n), layer: ggbApplet.getLayer(n), fixed: ggbApplet.isFixed(n),
+                 lineThickness: ggbApplet.getLineThickness(n), lineStyle: ggbApplet.getLineStyle(n),
+                 pointSize: ggbApplet.getPointSize(n), pointStyle: ggbApplet.getPointStyle(n),
+                 filling: ggbApplet.getFilling(n), animating: ggbApplet.isAnimating(n),
+             });",
+            READ,
+            false,
+        ),
+        "xml" => ("return JSON.stringify(ggbApplet.getXML());", READ, false),
+        "png" => ("return JSON.stringify(ggbApplet.getPNGBase64(args.scale ?? 1, !!args.transparent, 72));", READ, false),
+        "svg" => ("return JSON.stringify(await new Promise((resolve) => ggbApplet.exportSVG(resolve)));", READ, false),
+        "file" => ("return JSON.stringify(await new Promise((resolve) => ggbApplet.getBase64(resolve)));", READ, false),
+        "viewport" => ("return JSON.stringify(window.locusPluginView());", READ, false),
+        "cas" => {
+            return Some((format!("{}return JSON.stringify(ggbApplet.evalCommandCAS(args.input));", tools::CAS_READY), READ, false))
+        }
+        "selection" => ("return JSON.stringify(window.locusPluginSelection());", READ, false),
+        "hits" => ("return JSON.stringify(window.locusPluginHits(args.x, args.y));", READ, false),
+        "mode" => ("return JSON.stringify(ggbApplet.getMode());", READ, false),
+        "eval" => (
+            "ggbApplet.setErrorDialogsActive(false);
+             try { const labels = await ggbApplet.asyncEvalCommandGetLabels(args.command);
+                   return JSON.stringify(labels ? labels.split(',') : []); }
+             finally { ggbApplet.setErrorDialogsActive(true); }",
+            WRITE,
+            true,
+        ),
+        "set" => (
+            "const n = args.name;
+             if (!ggbApplet.exists(n)) throw `There is no object ${n}.`;
+             if ('value' in args) ggbApplet.setValue(n, args.value);
+             if ('x' in args && 'y' in args) ggbApplet.setCoords(n, args.x, args.y);
+             if (args.color) ggbApplet.setColor(n, ...[1, 3, 5].map((i) => parseInt(args.color.slice(i, i + 2), 16)));
+             const setters = { visible: 'setVisible', caption: 'setCaption', labelVisible: 'setLabelVisible', layer: 'setLayer',
+                 fixed: 'setFixed', lineThickness: 'setLineThickness', lineStyle: 'setLineStyle', pointSize: 'setPointSize',
+                 pointStyle: 'setPointStyle', filling: 'setFilling', trace: 'setTrace', animating: 'setAnimating' };
+             for (const [key, setter] of Object.entries(setters)) if (key in args) ggbApplet[setter](n, args[key]);
+             return 'null';",
+            WRITE,
+            true,
+        ),
+        "delete" => ("ggbApplet.deleteObject(args.name); return 'null';", WRITE, true),
+        "setViewport" => (
+            "if (!(args.xmin < args.xmax && args.ymin < args.ymax)) throw 'The minimum must be below the maximum.';
+             ggbApplet.setCoordSystem(args.xmin, args.xmax, args.ymin, args.ymax);
+             return 'null';",
+            WRITE,
+            false,
+        ),
+        "select" => ("window.locusPluginSelect(args.names ?? []); return 'null';", WRITE, false),
+        "setMode" => ("ggbApplet.setMode(args.mode); return 'null';", WRITE, false),
+        "perspective" => ("ggbApplet.setPerspective(args.code); return 'null';", WRITE, false),
+        "animate" => ("args.running ? ggbApplet.startAnimation() : ggbApplet.stopAnimation(); return 'null';", WRITE, false),
+        "undo" => ("ggbApplet.undo(); return 'null';", WRITE, false),
+        "redo" => ("ggbApplet.redo(); return 'null';", WRITE, false),
+        "open" => ("await new Promise((resolve) => ggbApplet.setBase64(args.file, resolve)); return 'null';", WRITE, false),
+        "new" => ("ggbApplet.newConstruction(); return 'null';", WRITE, false),
+        _ => return None,
+    };
+    Some((body.to_string(), permission, changes))
+}
+
+// Reads or changes the construction in an app window: the one named in `window`, the window a panel is in,
+// or the one used last. A batch runs its calls in order with one undo point and returns their results.
 #[tauri::command]
 pub async fn plugin_app(
     app: AppHandle,
@@ -153,103 +237,162 @@ pub async fn plugin_app(
 ) -> Result<Value, String> {
     let caller = caller(&webview, plugin)?;
     let args = args.unwrap_or(json!({}));
-    let read = |body: &str| (body.to_string(), "construction:read");
-    let write = |body: &str| (body.to_string(), "construction:write");
-    let (body, permission) = match action.as_str() {
-        "objects" => read(
-            "return JSON.stringify(ggbApplet.getAllObjectNames().map((name) =>
-                 ({ name, type: ggbApplet.getObjectType(name), value: ggbApplet.getValueString(name) })));",
-        ),
-        "get" => read(
-            "const n = args.name;
-             if (!ggbApplet.exists(n)) throw `There is no object ${n}.`;
-             return JSON.stringify({
-                 name: n, type: ggbApplet.getObjectType(n), value: ggbApplet.getValue(n),
-                 text: ggbApplet.getValueString(n), definition: ggbApplet.getDefinitionString(n),
-                 command: ggbApplet.getCommandString(n), x: ggbApplet.getXcoord(n), y: ggbApplet.getYcoord(n),
-                 color: ggbApplet.getColor(n), visible: ggbApplet.getVisible(n),
-             });",
-        ),
-        "xml" => read("return JSON.stringify(ggbApplet.getXML());"),
-        "png" => read("return JSON.stringify(ggbApplet.getPNGBase64(1, false, 72));"),
-        "viewport" => read(
-            "const view = JSON.parse(ggbApplet.getViewProperties(1));
-             return JSON.stringify({ xmin: view.xMin, xmax: view.xMin + view.width * view.invXscale,
-                 ymin: view.yMin, ymax: view.yMin + view.height * view.invYscale });",
-        ),
-        "cas" => read(&format!("{}return JSON.stringify(ggbApplet.evalCommandCAS(args.input));", tools::CAS_READY)),
-        "eval" => write(
-            "ggbApplet.setErrorDialogsActive(false);
-             try { const labels = await ggbApplet.asyncEvalCommandGetLabels(args.command);
-                   return JSON.stringify(labels ? labels.split(',') : []); }
-             finally { ggbApplet.setErrorDialogsActive(true); }",
-        ),
-        "set" => write(
-            "const n = args.name;
-             if (!ggbApplet.exists(n)) throw `There is no object ${n}.`;
-             if ('value' in args) ggbApplet.setValue(n, args.value);
-             if ('x' in args && 'y' in args) ggbApplet.setCoords(n, args.x, args.y);
-             if (args.color) ggbApplet.setColor(n, ...[1, 3, 5].map((i) => parseInt(args.color.slice(i, i + 2), 16)));
-             if ('visible' in args) ggbApplet.setVisible(n, args.visible);
-             if ('caption' in args) ggbApplet.setCaption(n, args.caption);
-             return 'null';",
-        ),
-        "delete" => write("ggbApplet.deleteObject(args.name); return 'null';"),
-        "setViewport" => write(
-            "if (!(args.xmin < args.xmax && args.ymin < args.ymax)) throw 'The minimum must be below the maximum.';
-             ggbApplet.setCoordSystem(args.xmin, args.xmax, args.ymin, args.ymax);
-             return 'null';",
-        ),
-        _ => return Err("Unknown construction action.".into()),
+    let windows = session::labels(&app);
+    if action == "windows" {
+        caller.require(READ)?;
+        let list: Vec<Value> =
+            windows.iter().map(|label| json!({"window": label, "app": session::mode(&app, label).name()})).collect();
+        return Ok(json!({"windows": list, "active": session::active(&app)}));
+    }
+    let target = match args["window"].as_str() {
+        Some(window) if windows.iter().any(|label| label == window) => window.to_string(),
+        Some(_) => return Err("There is no such app window.".into()),
+        None => caller.target.clone(),
     };
-    caller.require(permission)?;
-    let result = tools::geogebra(&app, &caller.target, &args, &body).await?;
-    serde_json::from_str(&result).map_err(|e| e.to_string())
+    let calls = match action.as_str() {
+        "batch" => args["calls"].as_array().ok_or("Missing calls.")?.clone(),
+        _ => vec![json!({"action": action, "args": args})],
+    };
+    let mut undo = false;
+    let mut steps = String::new();
+    for call in &calls {
+        let name = call["action"].as_str().unwrap_or_default();
+        let (body, permission, changes) = script(name).ok_or(format!("Unknown construction action {name}."))?;
+        caller.require(permission)?;
+        undo |= changes;
+        let args = if call["args"].is_object() { call["args"].clone() } else { json!({}) };
+        steps += &format!("results.push(JSON.parse(await (async (args) => {{ {body} }})({args})));\n");
+    }
+    let body = format!(
+        "const results = [];
+         try {{ {steps} }} finally {{ {} }}
+         return JSON.stringify(results);",
+        if undo { "ggbApplet.setUndoPoint();" } else { "" }
+    );
+    let results: Value = serde_json::from_str(&tools::geogebra(&app, &target, &json!({}), &body).await?).map_err(|e| e.to_string())?;
+    Ok(if action == "batch" { results } else { results[0].clone() })
 }
 
-// Construction changes reported by an app page, sent on to the plugins that read the construction.
+// Events about an app window that its page reports, sent on to the plugins that listen to them.
 #[tauri::command]
-pub fn plugin_app_event(app: AppHandle, webview: Webview, events: Value) -> Result<(), String> {
+pub fn plugin_app_event(app: AppHandle, webview: Webview, mut event: Value) -> Result<(), String> {
     browser::trusted(&webview)?;
-    let event = json!({"type": "construction", "window": webview.label(), "events": events});
-    super::broadcast(&app, "construction:read", &event);
+    let kind = event["type"].as_str().unwrap_or_default();
+    if kind == "window" || !super::EVENTS.contains(&kind) {
+        return Err("Unknown event.".into());
+    }
+    event["window"] = json!(webview.label());
+    super::broadcast(&app, &event);
     Ok(())
 }
 
-// What the app pages show for the running plugins: panels, commands and windows.
+// Picking a plugin's tool in an app window and the input on the graphics view while it is picked.
+#[tauri::command]
+pub fn plugin_input(app: AppHandle, webview: Webview, plugin: String, mut event: Value) -> Result<(), String> {
+    browser::trusted(&webview)?;
+    if !matches!(event["type"].as_str(), Some("input" | "toolActive")) {
+        return Err("Unknown event.".into());
+    }
+    event["window"] = json!(webview.label());
+    emit(&app, &plugin, &event);
+    Ok(())
+}
+
+// What the app pages show for the running plugins: panels, overlays, styles, scripts, commands and windows.
+// Scripts are left out during exams.
 #[tauri::command]
 pub fn plugin_app_state(app: AppHandle, webview: Webview) -> Result<Value, String> {
     browser::trusted(&webview)?;
     let running = super::running(&app);
+    let exam = exam::active(&app);
     let plugins: Vec<Value> = running
         .iter()
         .map(|plugin| {
-            let panel = &plugin.manifest["panel"];
+            let manifest = &plugin.manifest;
+            let panel = &manifest["panel"];
+            let file = |path: &Value| path.as_str().map(|path| plugin.page_url(path).to_string());
+            let updates = with(&app, &plugin.id, |instance| instance.commands.clone()).unwrap_or_default();
+            let commands: Vec<Value> = manifest["commands"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|command| {
+                    let mut command = command.clone();
+                    if let Some(update) = command["id"].as_str().and_then(|id| updates.get(id)) {
+                        for key in ["title", "visible"].into_iter().filter(|key| !update[key].is_null()) {
+                            command[key] = update[key].clone();
+                        }
+                    }
+                    command["icon"] = json!(file(&command["icon"]));
+                    (command["visible"] != false).then_some(command)
+                })
+                .collect();
             json!({
                 "id": plugin.id,
                 "name": plugin.name(),
                 "window": plugin.has_window(),
-                "commands": plugin.manifest["commands"].as_array().cloned().unwrap_or_default(),
+                "commands": commands,
                 "panel": panel.is_object().then(|| json!({
                     "url": plugin.page_url(panel["main"].as_str().unwrap_or("panel.html")).to_string(),
                     "title": panel["title"].as_str().unwrap_or(plugin.name()),
                     "width": panel["width"].as_f64().unwrap_or(320.0),
                 })),
+                "overlay": manifest["overlay"].is_object()
+                    .then(|| plugin.page_url(manifest["overlay"]["main"].as_str().unwrap_or("overlay.html")).to_string()),
+                "styles": manifest["styles"].as_array().into_iter().flatten().filter_map(file).collect::<Vec<_>>(),
+                "script": if exam { None } else { file(&manifest["script"]) },
             })
         })
         .collect();
-    let events = running.iter().any(|plugin| plugin.permits("construction:read"));
+    if plugins.iter().any(|plugin| plugin["script"].is_string()) {
+        app.state::<Plugins>().0.lock().unwrap().scripted.insert(webview.label().into());
+    }
+    let events: Vec<&str> = super::EVENTS.into_iter().filter(|kind| running.iter().any(|plugin| plugin.listens(kind))).collect();
     Ok(json!({"plugins": plugins, "events": events}))
 }
 
 // Runs a plugin command chosen in an app window, or shows and hides the plugin window without one.
 #[tauri::command]
-pub fn plugin_command(app: AppHandle, webview: Webview, plugin: String, command: Option<String>) -> Result<(), String> {
+pub fn plugin_command(
+    app: AppHandle,
+    webview: Webview,
+    plugin: String,
+    command: Option<String>,
+    objects: Option<Vec<String>>,
+) -> Result<(), String> {
     browser::trusted(&webview)?;
     match command {
-        Some(command) => super::command_event(&app, &plugin, &command, webview.label()),
+        Some(command) => super::command_event(&app, &plugin, &command, webview.label(), objects),
         None => super::toggle(app, plugin),
     }
+    Ok(())
+}
+
+// Changes the title of one of the plugin's commands, or hides and shows it, until the plugin stops.
+#[tauri::command]
+pub fn plugin_command_update(
+    app: AppHandle,
+    webview: Webview,
+    id: String,
+    title: Option<String>,
+    visible: Option<bool>,
+    plugin: Option<String>,
+) -> Result<(), String> {
+    let caller = caller(&webview, plugin)?;
+    let known = caller.plugin.manifest["commands"].as_array().is_some_and(|list| list.iter().any(|command| command["id"] == id.as_str()));
+    if !known {
+        return Err(format!("There is no command {id}."));
+    }
+    with(&app, &caller.plugin.id, |instance| {
+        let update = instance.commands.entry(id).or_insert_with(|| json!({}));
+        if let Some(title) = title {
+            update["title"] = json!(title);
+        }
+        if let Some(visible) = visible {
+            update["visible"] = json!(visible);
+        }
+    });
+    super::changed(&app);
     Ok(())
 }
 
@@ -333,9 +476,57 @@ pub fn values(app: &AppHandle, id: &str, manifest: &Value) -> Value {
     Value::Object(values)
 }
 
+// Saves setting values and tells the plugin's pages and panels.
+fn save_settings(app: &AppHandle, id: &str, values: &serde_json::Map<String, Value>) -> Result<(), String> {
+    let mut data = data(app, id);
+    for (key, value) in values {
+        data["settings"][key] = value.clone();
+    }
+    save_data(app, id, &data)?;
+    if let Some(plugin) = plugin(app, id) {
+        emit(app, id, &json!({"type": "settings", "settings": settings(app, &plugin)}));
+    }
+    Ok(())
+}
+
+// The plugin's settings, after saving the given values of settings from its manifest.
 #[tauri::command]
-pub fn plugin_settings(app: AppHandle, webview: Webview, plugin: Option<String>) -> Result<Value, String> {
-    Ok(settings(&app, &caller(&webview, plugin)?.plugin))
+pub fn plugin_settings(app: AppHandle, webview: Webview, values: Option<Value>, plugin: Option<String>) -> Result<Value, String> {
+    let plugin = caller(&webview, plugin)?.plugin;
+    if let Some(values) = values.as_ref().and_then(Value::as_object) {
+        let current = settings(&app, &plugin);
+        if let Some(key) = values.keys().find(|key| current.get(key.as_str()).is_none()) {
+            return Err(format!("There is no setting {key}."));
+        }
+        save_settings(&app, &plugin.id, values)?;
+    }
+    Ok(settings(&app, &plugin))
+}
+
+// Tells the user something: a short note in the app window, a message, or a question that returns whether they agreed.
+#[tauri::command]
+pub async fn plugin_dialog(
+    app: AppHandle,
+    webview: Webview,
+    action: String,
+    text: String,
+    plugin: Option<String>,
+) -> Result<Value, String> {
+    use tauri_plugin_dialog::MessageDialogButtons;
+    let caller = caller(&webview, plugin)?;
+    let name = caller.plugin.name();
+    let dialog = || app.dialog().message(&text).title(name);
+    match action.as_str() {
+        "toast" => {
+            let view = app.get_webview(&caller.target).ok_or("Locus window missing.")?;
+            view.eval(format!("window.locusPluginToast && window.locusPluginToast({}, {})", json!(name), json!(text)))
+                .map_err(|e| e.to_string())?;
+            Ok(Value::Null)
+        }
+        "message" => Ok(json!(dialog().blocking_show())),
+        "confirm" => Ok(json!(dialog().buttons(MessageDialogButtons::OkCancel).blocking_show())),
+        _ => Err("Unknown dialog action.".into()),
+    }
 }
 
 // Opens or saves a file the user picks. Options: name, contents, extensions and base64 for binary files.
@@ -463,6 +654,7 @@ pub fn plugin_list(app: AppHandle, webview: Webview) -> Result<Value, String> {
                 "license": manifest["license"],
                 "signed": plugin.signed,
                 "exam": plugin.exam(),
+                "supported": plugin.supported(),
                 "enabled": !disabled.contains(&plugin.id),
             })
         })
@@ -481,13 +673,7 @@ pub fn plugin_enable(app: AppHandle, webview: Webview, id: String, enabled: bool
 #[tauri::command]
 pub fn plugin_setting_set(app: AppHandle, webview: Webview, id: String, key: String, value: Value) -> Result<(), String> {
     browser::trusted(&webview)?;
-    let mut data = data(&app, &id);
-    data["settings"][key] = value;
-    save_data(&app, &id, &data)?;
-    if let Some(plugin) = plugin(&app, &id) {
-        emit(&app, &id, &json!({"type": "settings", "settings": settings(&app, &plugin)}));
-    }
-    Ok(())
+    save_settings(&app, &id, &serde_json::Map::from_iter([(key, value)]))
 }
 
 // iPadOS has no global shortcuts, so the pages check key presses against these.

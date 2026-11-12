@@ -42,6 +42,7 @@ import org.geogebra.common.ownership.GlobalScope;
 import org.geogebra.common.restrictions.Restrictions;
 import org.geogebra.common.util.StringUtil;
 import org.geogebra.web.full.gui.HeaderView;
+import org.geogebra.web.full.gui.LocusPluginEntries;
 import org.geogebra.web.full.gui.images.AppResources;
 import org.geogebra.web.full.gui.menu.action.DefaultMenuActionHandlerFactory;
 import org.geogebra.web.full.gui.menu.action.ExamMenuActionHandlerFactory;
@@ -332,6 +333,25 @@ public final class MenuViewController implements EventRenderable, SetLabels, Req
 
 	private void updateMenuItemGroups() {
 		setMenuItemGroups(menuView, activeMenu.getMenuItemGroups());
+		List<LocusPluginEntries.Entry> entries = LocusPluginEntries.get("menu");
+		if (!entries.isEmpty()) {
+			menuView.add(BaseWidgetFactory.INSTANCE.newDivider(false));
+		}
+		for (LocusPluginEntries.Entry entry : entries) {
+			AriaMenuItem item = MenuItemView.create(LocusPluginEntries.icon(entry), entry.title);
+			item.setScheduledCommand(() -> {
+				setMenuVisible(false);
+				LocusPluginEntries.run(entry, null);
+			});
+			menuView.addItem(item);
+		}
+	}
+
+	/**
+	 * Shows the commands plugins currently add to the menu.
+	 */
+	public void updatePluginItems() {
+		updateMenuItemGroups();
 	}
 
 	void setMenuItemGroups(MenuView menuView, List<MenuItemGroup> menuItemGroups) {

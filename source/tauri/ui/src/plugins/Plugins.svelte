@@ -4,7 +4,7 @@
     import { Button } from '$lib/components/ui/button';
     import { Input } from '$lib/components/ui/input';
 
-    let { ui, run } = $props();
+    let { ui, run, toolInput, wheel } = $props();
 
     let search = $state('');
     let input = $state(null);
@@ -36,6 +36,22 @@
 </script>
 
 <div class="font-sans text-[14px] text-foreground">
+    {#if ui.tool && ui.view}
+        <div
+            class="fixed cursor-crosshair touch-none"
+            style:left="{ui.view.left}px"
+            style:top="{ui.view.top}px"
+            style:width="{ui.view.width}px"
+            style:height="{ui.view.height}px"
+            role="application"
+            onpointerdown={toolInput}
+            onpointermove={toolInput}
+            onpointerup={toolInput}
+            onwheel={wheel}
+            oncontextmenu={(event) => event.preventDefault()}
+        ></div>
+    {/if}
+
     {#if panel}
         <aside class="fixed inset-y-0 right-0 flex flex-col border-l border-border bg-background shadow-xl" style:width="{panel.panel.width}px">
             <header class="flex items-center gap-1 border-b border-border px-3 py-2">
@@ -50,9 +66,24 @@
                 </div>
             {/if}
             {#key panel.id}
-                <iframe title={panel.panel.title} src={panel.panel.url} class="min-h-0 w-full flex-1 border-0"></iframe>
+                <iframe title={panel.panel.title} src={panel.panel.url} data-plugin={panel.id} class="min-h-0 w-full flex-1 border-0"></iframe>
             {/key}
         </aside>
+    {/if}
+
+    {#each ui.plugins.filter((plugin) => plugin.overlay) as plugin (plugin.id)}
+        <iframe title={plugin.name} src={plugin.overlay} data-plugin={plugin.id} class="pointer-events-none fixed inset-0 h-full w-full border-0"></iframe>
+    {/each}
+
+    {#if ui.toasts.length}
+        <div class="fixed bottom-4 left-1/2 flex -translate-x-1/2 flex-col gap-2">
+            {#each ui.toasts as toast (toast.id)}
+                <div class="w-[360px] max-w-[calc(100vw-32px)] rounded-lg border border-border bg-background px-4 py-3 shadow-lg" role="status">
+                    <p class="font-semibold">{toast.name}</p>
+                    <p>{toast.text}</p>
+                </div>
+            {/each}
+        </div>
     {/if}
 
     {#if ui.list}

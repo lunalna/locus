@@ -35,6 +35,7 @@ import org.geogebra.common.util.debug.Log;
 import org.geogebra.web.full.css.MaterialDesignResources;
 import org.geogebra.web.full.css.ToolbarSvgResources;
 import org.geogebra.web.full.css.ToolbarSvgResourcesSync;
+import org.geogebra.web.full.gui.LocusPluginEntries;
 import org.geogebra.web.full.gui.dialog.LocusAppPopup;
 import org.geogebra.web.full.gui.exam.ExamLogAndExitDialog;
 import org.geogebra.web.full.gui.exam.ExamUtil;
@@ -351,6 +352,15 @@ public final class GGWToolBar extends Composite
 	}
 
 	/**
+	 * Shows the commands plugins currently add to the toolbar.
+	 */
+	public void updatePluginButtons() {
+		if (rightButtonPanel != null) {
+			updateActionPanel();
+		}
+	}
+
+	/**
 	 * Updates the toolbar to match current settings (exam / no exam)
 	 */
 	public void updateActionPanel() {
@@ -387,6 +397,9 @@ public final class GGWToolBar extends Composite
 		}
 		if (app.supportsView(App.VIEW_ASSISTANT)) {
 			addAssistantButton();
+		}
+		for (LocusPluginEntries.Entry entry : LocusPluginEntries.get("toolbar")) {
+			rightButtonPanel.add(LocusPluginEntries.button(entry, 24, false));
 		}
 		this.menuBarShowing = false;
 		if (app.getAppletParameters().getDataParamShowMenuBar(false)

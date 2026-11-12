@@ -411,6 +411,7 @@ public abstract class CommandDispatcher {
 				case TurtleDown:
 				case RunClickScript:
 				case RunUpdateScript:
+				case RunPlugin:
 				case SetImage:
 					// case DensityPlot:
 					return getScriptingCommandProcessorFactory().getProcessor(command, kernel);

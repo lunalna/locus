@@ -1,9 +1,10 @@
 // A plugin is a folder with a plugin.json and its pages. The main page runs from launch, hidden or in a
 // floating window above other apps; a panel page can show in a side panel of the app windows. Pages
-// call the plugin_* commands and get events through window.locusPluginEvent; panels do the same
-// through the app page they are shown in. During exams only signed plugins with "exam": true run.
+// call the plugin_* commands and get events through window.locusPluginEvent; panels and overlays do the
+// same through the app page they are shown in. Styles and scripts are added to the app pages.
+// During exams only signed plugins with "exam": true run, and no scripts.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
@@ -31,6 +32,12 @@ const SOURCES: &str = "http://plugin.localhost http://ipc.localhost";
 const SOURCES: &str = "plugin: ipc:";
 
 const DIMMED: f64 = 0.4;
+
+// The plugin API version. Plugins that need a newer one, in the manifest's "api", do not run.
+pub const API: u64 = 2;
+
+// Events about the app windows that plugins with the construction:read permission list in "events".
+pub const EVENTS: [&str; 6] = ["construction", "selection", "view", "mode", "undo", "window"];
 
 #[derive(Clone)]
 pub struct Plugin {
@@ -77,6 +84,19 @@ impl Plugin {
     fn permits(&self, permission: &str) -> bool {
         self.manifest["permissions"].as_array().is_some_and(|list| list.iter().any(|p| p == permission))
     }
+
+    fn command(&self, id: &str) -> Option<&Value> {
+        self.manifest["commands"].as_array()?.iter().find(|command| command["id"] == id)
+    }
+
+    fn supported(&self) -> bool {
+        self.manifest["api"].as_u64().unwrap_or(1) <= API
+    }
+
+    fn listens(&self, event: &str) -> bool {
+        self.permits("construction:read") && self.manifest["events"].as_array().is_some_and(|list| list.iter().any(|e| e == event))
+    }
+
 
     fn size(&self, key: &str, default: f64) -> f64 {
         self.manifest["window"][key].as_f64().unwrap_or(default)
@@ -130,6 +150,8 @@ struct State {
     next: u64,
     // Assistant tool calls waiting for the plugin's answer.
     calls: HashMap<u64, Sender<Result<Value, String>>>,
+    // App windows a plugin script was given to since they last loaded.
+    scripted: HashSet<String>,
 }
 
 struct Instance {
@@ -140,6 +162,8 @@ struct Instance {
     dimmed: bool,
     opacity: f64,
     filter: String,
+    // Titles and visibility the plugin gave its commands since it started.
+    commands: HashMap<String, Value>,
 }
 
 impl Instance {
@@ -152,6 +176,7 @@ impl Instance {
             dimmed: false,
             opacity: 1.0,
             filter: String::new(),
+            commands: HashMap::new(),
         }
     }
 }
@@ -249,7 +274,7 @@ pub fn sync(app: &AppHandle) {
     let exam = exam::active(app);
     let wanted: Vec<Plugin> = all(app)
         .into_iter()
-        .filter(|plugin| !disabled.contains(&plugin.id) && (plugin.exam() || !exam))
+        .filter(|plugin| plugin.supported() && !disabled.contains(&plugin.id) && (plugin.exam() || !exam))
         .collect();
     let started: Vec<String> = app.state::<Plugins>().0.lock().unwrap().running.keys().cloned().collect();
     for id in started.iter().filter(|id| !wanted.iter().any(|plugin| &plugin.id == *id)) {
@@ -267,6 +292,11 @@ pub fn sync(app: &AppHandle) {
             let _ = view.eval("window.locusLoadShortcuts && window.locusLoadShortcuts()");
         }
     }
+    changed(app);
+}
+
+// Lets the app windows load what the running plugins show again.
+fn changed(app: &AppHandle) {
     for label in session::labels(app) {
         if let Some(view) = app.get_webview(&label) {
             let _ = view.eval("window.locusPluginsChanged && window.locusPluginsChanged()");
@@ -309,10 +339,14 @@ pub fn details(id: &str, manifest: &Value, dir: &Path) -> Value {
     json!({
         "signed": plugin.signed,
         "exam": plugin.exam(),
+        "supported": plugin.supported(),
         "permissions": manifest["permissions"],
         "network": manifest["network"],
         "window": plugin.has_window(),
         "panel": manifest["panel"].is_object(),
+        "overlay": manifest["overlay"].is_object(),
+        "styles": manifest["styles"].as_array().is_some_and(|styles| !styles.is_empty()),
+        "script": manifest["script"].is_string(),
         "tools": plugin.tools().iter().map(|(_, tool)| tool["name"].clone()).collect::<Vec<_>>(),
     })
 }
@@ -363,16 +397,34 @@ pub fn pressed(app: &AppHandle, combo: &Combo) {
             "dim" => dim(app, &id),
             "panel" => panel(app, &id, &session::active(app), None),
             _ => {
-                if let Some(command) = action.strip_prefix("command:") {
-                    command_event(app, &id, command, &session::active(app));
+                let Some(command) = action.strip_prefix("command:") else { continue };
+                let tool = plugin(app, &id).and_then(|plugin| plugin.command(command).map(|c| c["tool"] == true));
+                if tool == Some(true) {
+                    // Tools are picked in the app window, which then sends their input.
+                    if let Some(view) = app.get_webview(&session::active(app)) {
+                        let _ = view.eval(format!("window.locusPluginRun && window.locusPluginRun({}, {})", json!(id), json!(command)));
+                    }
+                } else {
+                    command_event(app, &id, command, &session::active(app), None);
                 }
             }
         }
     }
 }
 
-fn command_event(app: &AppHandle, id: &str, command: &str, window: &str) {
-    emit_page(app, id, &json!({"type": "command", "id": command, "window": window}));
+// Commands from an object's context menu name the selected objects.
+fn command_event(app: &AppHandle, id: &str, command: &str, window: &str, objects: Option<Vec<String>>) {
+    emit_page(app, id, &json!({"type": "command", "id": command, "window": window, "objects": objects}));
+}
+
+// A window that loads again or closes runs no plugin scripts anymore.
+pub fn unscripted(app: &AppHandle, window: &str) {
+    app.state::<Plugins>().0.lock().unwrap().scripted.remove(window);
+}
+
+// Plugin scripts have full access to their app window, so no exam may start while one runs.
+pub fn scripted(app: &AppHandle) -> bool {
+    !app.state::<Plugins>().0.lock().unwrap().scripted.is_empty()
 }
 
 // Opens, closes or toggles a plugin's panel in an app window.
@@ -476,8 +528,10 @@ fn emit(app: &AppHandle, id: &str, event: &Value) {
     }
 }
 
-fn broadcast(app: &AppHandle, permission: &str, event: &Value) {
-    for plugin in running(app).iter().filter(|plugin| plugin.permits(permission)) {
+// Sends an event about the app windows to the plugins that listen to its type.
+fn broadcast(app: &AppHandle, event: &Value) {
+    let kind = event["type"].as_str().unwrap_or_default();
+    for plugin in running(app).iter().filter(|plugin| plugin.listens(kind)) {
         emit(app, &plugin.id, event);
     }
 }
@@ -486,7 +540,7 @@ fn broadcast(app: &AppHandle, permission: &str, event: &Value) {
 #[cfg_attr(mobile, allow(dead_code))]
 pub fn focused(app: &AppHandle, window: &str) {
     let event = json!({"type": "window", "window": window, "app": session::mode(app, window).name()});
-    broadcast(app, "construction:read", &event);
+    broadcast(app, &event);
 }
 
 fn listing(app: &AppHandle, id: &str) -> Value {

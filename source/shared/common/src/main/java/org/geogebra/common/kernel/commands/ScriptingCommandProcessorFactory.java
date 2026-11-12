@@ -32,6 +32,7 @@ import org.geogebra.common.kernel.scripting.CmdRelation;
 import org.geogebra.common.kernel.scripting.CmdRename;
 import org.geogebra.common.kernel.scripting.CmdRepeat;
 import org.geogebra.common.kernel.scripting.CmdRunClickScript;
+import org.geogebra.common.kernel.scripting.CmdRunPlugin;
 import org.geogebra.common.kernel.scripting.CmdRunUpdateScript;
 import org.geogebra.common.kernel.scripting.CmdSelectObjects;
 import org.geogebra.common.kernel.scripting.CmdSetActiveView;
@@ -215,6 +216,8 @@ public class ScriptingCommandProcessorFactory implements CommandProcessorFactory
 				return new CmdRunClickScript(kernel);
 			case RunUpdateScript:
 				return new CmdRunUpdateScript(kernel);
+			case RunPlugin:
+				return new CmdRunPlugin(kernel);
 			case SetImage:
 				return new CmdSetImage(kernel);
 			// case DensityPlot:

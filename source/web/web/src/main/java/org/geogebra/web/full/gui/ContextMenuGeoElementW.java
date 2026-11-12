@@ -18,6 +18,7 @@ package org.geogebra.web.full.gui;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import org.geogebra.common.gui.ContextMenuGeoElement;
 import org.geogebra.common.gui.dialog.options.model.AngleArcSizeModel;
@@ -42,6 +43,7 @@ import org.geogebra.common.main.App;
 import org.geogebra.common.main.Localization;
 import org.geogebra.common.plugin.EventType;
 import org.geogebra.common.scientific.LabelController;
+import org.geogebra.common.util.StringUtil;
 import org.geogebra.common.util.debug.Log;
 import org.geogebra.web.full.css.MaterialDesignResources;
 import org.geogebra.web.full.css.ToolbarSvgResources;
@@ -252,6 +254,8 @@ public class ContextMenuGeoElementW extends ContextMenuGeoElement implements Att
 			addRenameForClassic();
 		}
 
+		addPluginItems();
+
 		// DELETE
 		addDeleteItem();
 		addPropertiesItem();
@@ -305,6 +309,23 @@ public class ContextMenuGeoElementW extends ContextMenuGeoElement implements Att
 					generalIconResource.getImageResource(GeneralIcon.SETTINGS),
 					loc.getMenu("Settings"));
 		}
+	}
+
+	private void addPluginItems() {
+		List<String> names = new ArrayList<>();
+		List<String> types = new ArrayList<>();
+		for (GeoElement geo : getGeos()) {
+			names.add(geo.getLabelSimple());
+			types.add(StringUtil.toLowerCaseUS(geo.getTypeString()));
+		}
+		List<LocusPluginEntries.Entry> entries = LocusPluginEntries.get("object", types);
+		if (entries.isEmpty()) {
+			return;
+		}
+		for (LocusPluginEntries.Entry entry : entries) {
+			addAction(() -> LocusPluginEntries.run(entry, names), entry.title);
+		}
+		wrappedPopup.addSeparator();
 	}
 
 	private void addDeleteItem() {

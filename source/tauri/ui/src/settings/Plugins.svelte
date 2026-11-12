@@ -46,6 +46,7 @@
                             {plugin.name ?? plugin.id}
                             {#if plugin.version}<span class="font-normal text-muted-foreground">{plugin.version}</span>{/if}
                             {#if plugin.exam}<Badge variant="outline">Exams</Badge>{:else if !plugin.signed}<Badge variant="outline">Not signed</Badge>{/if}
+                            {#if !plugin.supported}<Badge variant="destructive">Needs a newer Locus</Badge>{/if}
                         </Item.Title>
                         {#if plugin.description}<Item.Description>{plugin.description}</Item.Description>{/if}
                     </Item.Content>

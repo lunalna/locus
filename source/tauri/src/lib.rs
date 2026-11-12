@@ -142,6 +142,16 @@ fn edit_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 #[tauri::command]
 fn exam_mode(app: AppHandle, webview: Webview, on: bool) -> Result<(), String> {
     browser::trusted(&webview)?;
+    if on && plugins::scripted(&app) {
+        use tauri_plugin_dialog::DialogExt;
+        app.dialog()
+            .message("A plugin changes the app windows with a script. Turn it off in Locus settings and open the app windows again to start an exam.")
+            .title("The exam cannot start")
+            .show(|_| {});
+        // The page already went into exam mode, so it starts over.
+        webview.reload().map_err(|e| e.to_string())?;
+        return Err("A plugin script is running.".into());
+    }
     if on {
         exam::start(&app)?;
     } else {
@@ -391,7 +401,10 @@ pub fn run() {
             plugins::api::plugin_app,
             plugins::api::plugin_app_event,
             plugins::api::plugin_app_state,
+            plugins::api::plugin_input,
             plugins::api::plugin_command,
+            plugins::api::plugin_command_update,
+            plugins::api::plugin_dialog,
             plugins::api::plugin_panel,
             plugins::api::plugin_storage,
             plugins::api::plugin_settings,
@@ -502,6 +515,7 @@ pub fn run() {
                     }
                 }
                 WindowEvent::Destroyed if session::is_main(window.label()) => {
+                    plugins::unscripted(window.app_handle(), window.label());
                     session::closed(window.app_handle(), window.label())
                 }
                 #[cfg(all(desktop, not(target_os = "macos")))]
@@ -547,11 +561,18 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app, event| {
-        if let RunEvent::ExitRequested { api, .. } = event {
-            if app.state::<Lockdown>().0.load(Ordering::SeqCst) {
+    app.run(|app, event| match event {
+        RunEvent::ExitRequested { api, code, .. } => {
+            // macOS apps stay in the Dock after their last window closes.
+            if app.state::<Lockdown>().0.load(Ordering::SeqCst) || (cfg!(target_os = "macos") && code.is_none()) {
                 api.prevent_exit();
             }
         }
+        // Plugin windows may be open, so only app windows count.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } if session::labels(app).is_empty() => {
+            let _ = session::restore(app);
+        }
+        _ => {}
     });
 }

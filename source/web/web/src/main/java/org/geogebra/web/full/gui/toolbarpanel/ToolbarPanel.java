@@ -1102,6 +1102,13 @@ public final class ToolbarPanel extends FlowPanel
 	}
 
 	/**
+	 * Shows the commands plugins currently add to the toolbar.
+	 */
+	public void updatePluginButtons() {
+		navRail.updatePluginButtons();
+	}
+
+	/**
 	 * Open the AI assistant tab.
 	 * @param fade decides if tab should fade during animation.
 	 */
