@@ -58,6 +58,9 @@ jobs:
 
   webapp:
     runs-on: ubuntu-latest
+    env:
+      COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -79,6 +82,9 @@ jobs:
           COPY . /usr/share/nginx/html
           EOF
           docker push --all-tags "$image"
+      # Coolify pulls the new image when its deploy webhook is called
+      - if: env.COOLIFY_WEBHOOK != ''
+        run: curl --fail -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
 
   publish:
     needs: desktop
