@@ -85,7 +85,7 @@ jobs:
       # Coolify pulls the new image when its deploy webhook is called
       - if: env.COOLIFY_WEBHOOK != ''
         run: |
-          curl --fail -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
+          curl --fail -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
 
   publish:
     needs: desktop
