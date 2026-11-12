@@ -27,6 +27,7 @@ import org.geogebra.web.shared.SignInController;
 import org.geogebra.web.shared.ggtapi.StaticFileUrls;
 
 import elemental2.dom.DomGlobal;
+import jsinterop.base.Js;
 
 /**
  * For offline browser
@@ -78,7 +79,8 @@ public final class BundleLookAndFeel extends GLookAndFeel {
 
 	@Override
 	public boolean isOfflineExamSupported() {
-		return true;
+		// only the Locus app can lock down an exam, the web version cannot
+		return Js.isTruthy(Js.asPropertyMap(DomGlobal.window).get("ggbExamFocusFromHost"));
 	}
 
 	@Override
