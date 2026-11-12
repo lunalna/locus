@@ -268,7 +268,19 @@ pub fn general_settings(app: AppHandle, webview: Webview) -> Result<Value, Strin
     Ok(json!({
         "startup": settings["startup"].as_str().filter(|name| Mode::parse(name).is_some()).unwrap_or("last"),
         "confirm_close": confirm_close(&app),
+        "classic_settings": settings["classic_settings"].as_bool().unwrap_or(false),
+        "hide_app_switcher": settings["hide_app_switcher"].as_bool().unwrap_or(false),
     }))
+}
+
+// Page flags read by the app at startup through init.js.
+pub fn script(app: &AppHandle) -> String {
+    let settings = resourcepack::settings(app);
+    format!(
+        "window.locusClassicSettings = {};\nwindow.locusHideAppSwitcher = {};\n",
+        settings["classic_settings"].as_bool().unwrap_or(false),
+        settings["hide_app_switcher"].as_bool().unwrap_or(false)
+    )
 }
 
 #[tauri::command]
@@ -276,15 +288,19 @@ pub fn general_set(app: AppHandle, webview: Webview, name: String, value: Value)
     browser::trusted(&webview)?;
     let valid = match name.as_str() {
         "startup" => value.as_str().is_some_and(|name| name == "last" || Mode::parse(name).is_some()),
-        "confirm_close" => value.is_boolean(),
+        "confirm_close" | "classic_settings" | "hide_app_switcher" => value.is_boolean(),
         _ => false,
     };
     if !valid {
         return Err("Invalid setting.".into());
     }
     let mut settings = resourcepack::settings(&app);
-    settings[name] = value;
-    resourcepack::save_settings(&app, &settings)
+    settings[&name] = value;
+    resourcepack::save_settings(&app, &settings)?;
+    if name == "classic_settings" || name == "hide_app_switcher" {
+        refresh_others(&app, &webview, &Value::Null);
+    }
+    Ok(())
 }
 
 // Called by the page once the user has saved or discarded the open file.

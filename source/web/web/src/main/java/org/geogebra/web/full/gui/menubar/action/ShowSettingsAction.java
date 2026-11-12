@@ -16,6 +16,7 @@
 
 package org.geogebra.web.full.gui.menubar.action;
 
+import org.geogebra.common.main.OptionType;
 import org.geogebra.web.full.gui.menubar.DefaultMenuAction;
 import org.geogebra.web.full.main.AppWFull;
 
@@ -27,6 +28,7 @@ public final class ShowSettingsAction extends DefaultMenuAction<AppWFull> {
 	@Override
 	public void execute(AppWFull app) {
 		app.getSelectionManager().clearSelectedGeos();
-		app.getActivity().showSettingsView(app);
+		// the main menu always opens the Locus settings, also when the classic panel is chosen
+		LocusSettingsAction.open(OptionType.GLOBAL.getName());
 	}
 }

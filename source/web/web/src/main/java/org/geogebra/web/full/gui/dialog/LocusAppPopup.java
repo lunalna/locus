@@ -36,7 +36,7 @@ public final class LocusAppPopup extends GPopupPanel {
 
 	private static final String[][] APPS = {{"classic", "Classic"}, {"suite", "Suite"},
 			{"graphing", "Graphing"}, {"geometry", "Geometry"}, {"3d", "3D"}, {"cas", "CAS"},
-			{"scientific", "Scientific"}, {"notes", "Notes"}};
+			{"scientific", "Scientific"}, {"notes", "Whiteboard"}};
 
 	private final Widget anchor;
 

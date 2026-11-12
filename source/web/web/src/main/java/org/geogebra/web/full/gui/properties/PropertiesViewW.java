@@ -18,6 +18,7 @@ package org.geogebra.web.full.gui.properties;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.geogebra.common.GeoGebraConstants;
@@ -39,6 +40,7 @@ import org.geogebra.common.properties.impl.general.LanguageProperty;
 import org.geogebra.web.full.gui.components.sideSheet.ComponentSideSheet;
 import org.geogebra.web.full.gui.components.sideSheet.SheetTitlePanel;
 import org.geogebra.web.full.gui.components.sideSheet.SideSheetData;
+import org.geogebra.web.full.gui.menubar.action.LocusSettingsAction;
 import org.geogebra.web.full.gui.properties.ui.PropertiesPanelAdapter;
 import org.geogebra.web.full.main.AppWFull;
 import org.geogebra.web.html5.euclidian.FontLoader;
@@ -390,8 +392,11 @@ public final class PropertiesViewW extends PropertiesView
 					: "Selection";
 		} else {
 			titleKey = "Settings";
-			// app settings are in the Locus settings, so this view only shows objects
-			propLists = List.of();
+			propLists = LocusSettingsAction.useClassic()
+					? app.getConfig().createPropertiesFactory().createProperties(
+							app, app.getLocalization(), app.appScope.propertiesRegistry)
+							.stream().filter(Objects::nonNull).toList()
+					: List.of();
 		}
 		List<String> labels = showableGeos.stream().map(GeoElement::getLabelSimple).toList();
 		boolean keepViewState = settingsTab != null

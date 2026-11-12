@@ -200,6 +200,11 @@ public final class GGWToolBar extends Composite
 		addRightButtonPanel();
 	}
 
+	private static boolean showLogo() {
+		return LocusAppPopup.isAvailable()
+				&& !Js.isTruthy(Js.asPropertyMap(DomGlobal.window).get("locusHideAppSwitcher"));
+	}
+
 	private void addLogo() {
 		Button logo = new Button();
 		logo.setStyleName("locusLogo");
@@ -389,7 +394,7 @@ public final class GGWToolBar extends Composite
 			}
 			rightButtonPanel.add(getTimer());
 		}
-		if (!exam && LocusAppPopup.isAvailable()) {
+		if (!exam && showLogo()) {
 			addLogo();
 		}
 		if (app.getUndoRedoMode() == UndoRedoMode.GUI) {
@@ -1147,7 +1152,7 @@ public final class GGWToolBar extends Composite
 		if (app.showMenuBar()) {
 			extraButtons += 90;
 		}
-		if (LocusAppPopup.isAvailable()) {
+		if (showLogo()) {
 			extraButtons += 160;
 		}
 		if (!examController.isIdle()) {

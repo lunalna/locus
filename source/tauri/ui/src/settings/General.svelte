@@ -7,6 +7,7 @@
     import AppSettings from './AppSettings.svelte';
     import Choice from './Choice.svelte';
     import { GENERAL } from './keys.js';
+    import { reload } from './reload.js';
 
     // a browser has no windows to restore or close
     const desktop = import.meta.env.MODE !== 'web';
@@ -24,6 +25,11 @@
     function set(name, value) {
         settings[name] = value;
         invoke('general_set', { name, value }).catch((e) => (error = String(e)));
+    }
+
+    // these are read by the app when the page loads
+    function setAndReload(name, value) {
+        invoke('general_set', { name, value }).then(reload).catch((e) => (error = String(e)));
     }
 
     function reset() {
@@ -61,6 +67,19 @@
                 <Label for="confirm">Ask to save before closing a window</Label>
                 <span class="text-xs text-muted-foreground">Only when the window has unsaved changes.</span>
             </div>
+        </div>
+
+        <div class="flex items-start gap-2">
+            <Checkbox id="classic-settings" class="mt-0.5" checked={settings.classic_settings} onCheckedChange={(checked) => setAndReload('classic_settings', checked)} />
+            <div class="flex flex-col gap-1">
+                <Label for="classic-settings">Use the classic settings panel</Label>
+                <span class="text-xs text-muted-foreground">Graphics, Algebra and other app settings open in the side panel. Settings in the main menu still opens these settings.</span>
+            </div>
+        </div>
+
+        <div class="flex items-start gap-2">
+            <Checkbox id="hide-app-switcher" class="mt-0.5" checked={settings.hide_app_switcher} onCheckedChange={(checked) => setAndReload('hide_app_switcher', checked)} />
+            <Label for="hide-app-switcher">Hide the app switcher in Locus Classic</Label>
         </div>
     {/if}
 

@@ -246,7 +246,7 @@ fn csp(urls: &Value) -> String {
 pub fn serve(app: &AppHandle, path: &str) -> Response<Vec<u8>> {
     let path = path.trim_start_matches('/');
     let file = if path == "init.js" {
-        Some(("text/javascript", (crate::performance::script(app) + &script(app)).into_bytes()))
+        Some(("text/javascript", (crate::performance::script(app) + &crate::session::script(app) + &script(app)).into_bytes()))
     } else if path == "icon" {
         icon(app).and_then(|icon| {
             let kind = if icon.extension().is_some_and(|ext| ext == "svg") { "image/svg+xml" } else { "image/png" };

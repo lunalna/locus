@@ -37,4 +37,11 @@ public final class LocusSettingsAction {
 		Js.<JsConsumer<String>>uncheckedCast(
 				Js.asPropertyMap(DomGlobal.window).get("locusSettings")).accept(section);
 	}
+
+	/**
+	 * @return whether app settings open in the classic settings panel
+	 */
+	public static boolean useClassic() {
+		return Js.isTruthy(Js.asPropertyMap(DomGlobal.window).get("locusClassicSettings"));
+	}
 }

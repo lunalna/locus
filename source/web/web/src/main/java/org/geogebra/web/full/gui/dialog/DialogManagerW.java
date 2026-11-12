@@ -524,10 +524,11 @@ public class DialogManagerW extends DialogManager implements LoadingApplication 
 		if (!app.letShowPropertiesDialog() || app.getGuiManager() == null) {
 			return;
 		}
-		// app settings are in the Locus settings, this view only shows objects
+		// app settings are in the Locus settings unless the classic panel is chosen
 		boolean noObjects = (geos == null || geos.isEmpty())
 				&& app.getSelectionManager().getSelectedGeos().isEmpty();
-		if ((type != null && type != OptionType.OBJECTS) || noObjects) {
+		if (!LocusSettingsAction.useClassic()
+				&& ((type != null && type != OptionType.OBJECTS) || noObjects)) {
 			LocusSettingsAction.open(type == null ? null : type.getName());
 			return;
 		}
