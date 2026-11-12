@@ -29,6 +29,7 @@ import org.geogebra.common.plugin.EventType;
 import org.geogebra.web.full.css.GuiResources;
 import org.geogebra.web.full.css.MaterialDesignResources;
 import org.geogebra.web.full.gui.images.AppResources;
+import org.geogebra.web.full.gui.menubar.action.LocusSettingsAction;
 import org.geogebra.web.full.main.AppWFull;
 import org.geogebra.web.html5.gui.menu.AriaMenuBar;
 import org.geogebra.web.html5.gui.menu.AriaMenuItem;
@@ -47,6 +48,10 @@ import org.gwtproject.user.client.DOM;
 import org.gwtproject.user.client.Event;
 import org.gwtproject.user.client.ui.FlowPanel;
 import org.gwtproject.user.client.ui.Widget;
+
+import elemental2.dom.DomGlobal;
+import elemental2.dom.EventListener;
+import elemental2.dom.KeyboardEvent;
 
 /**
  * Sidebar menu for SMART
@@ -120,6 +125,21 @@ public final class MainMenu extends FlowPanel
 			app.getNetworkOperation().getView().add(this);
 		}
 		add(menuPanel);
+		EventListener shiftListener = event -> setShift(((KeyboardEvent) event).shiftKey);
+		DomGlobal.window.addEventListener("keydown", shiftListener, true);
+		DomGlobal.window.addEventListener("keyup", shiftListener, true);
+		DomGlobal.window.addEventListener("blur", event -> setShift(false));
+	}
+
+	// while shift is held, the Settings item opens the Locus settings instead of the classic panel
+	private void setShift(boolean shift) {
+		boolean locus = shift && LocusSettingsAction.useClassic();
+		for (int i = 0; i < menuPanel.getWidgetCount(); i++) {
+			if (menuPanel.getWidget(i) instanceof SettingsMenu settings) {
+				settings.setShift(locus);
+				menuPanel.setStackText(i, getHTML(settings), true);
+			}
+		}
 	}
 
 	private void addSubmenu(Submenu submenu) {
@@ -172,6 +192,11 @@ public final class MainMenu extends FlowPanel
 					// check if SignIn was clicked
 					// if we are offline, the last item is actually Help
 					Widget clicked = index >= 0 ? this.getWidget(index) : null;
+					if (clicked instanceof SettingsMenu settings) {
+						settings.open(event.getShiftKey());
+						app.hideMenu();
+						return;
+					}
 					if (clicked instanceof Submenu clickedSubmenu && clickedSubmenu.isEmpty()) {
 						clickedSubmenu.handleHeaderClick();
 						app.hideMenu();

@@ -366,6 +366,16 @@ public final class GGWToolBar extends Composite
 	}
 
 	/**
+	 * Shows or hides the app switcher after the setting changed.
+	 */
+	public void updateAppSwitcher() {
+		if (rightButtonPanel != null) {
+			updateActionPanel();
+			onResize();
+		}
+	}
+
+	/**
 	 * Updates the toolbar to match current settings (exam / no exam)
 	 */
 	public void updateActionPanel() {

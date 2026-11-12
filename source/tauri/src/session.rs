@@ -295,10 +295,17 @@ pub fn general_set(app: AppHandle, webview: Webview, name: String, value: Value)
         return Err("Invalid setting.".into());
     }
     let mut settings = resourcepack::settings(&app);
-    settings[&name] = value;
+    settings[&name] = value.clone();
     resourcepack::save_settings(&app, &settings)?;
-    if name == "classic_settings" || name == "hide_app_switcher" {
-        refresh_others(&app, &webview, &Value::Null);
+    let script = match name.as_str() {
+        "classic_settings" => format!("window.locusClassicSettings = {value};"),
+        "hide_app_switcher" => format!("window.locusHideAppSwitcher = {value}; window.locusAppSwitcherUpdate?.();"),
+        _ => return Ok(()),
+    };
+    for label in labels(&app) {
+        if let Some(view) = app.get_webview(&label) {
+            let _ = view.eval(&script);
+        }
     }
     Ok(())
 }

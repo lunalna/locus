@@ -45,6 +45,7 @@ import org.geogebra.web.full.gui.properties.ui.PropertiesPanelAdapter;
 import org.geogebra.web.full.main.AppWFull;
 import org.geogebra.web.html5.euclidian.FontLoader;
 import org.geogebra.web.html5.gui.util.Dom;
+import org.geogebra.web.html5.gui.view.button.StandardButton;
 import org.geogebra.web.html5.main.AppW;
 import org.geogebra.web.shared.components.tab.ComponentTab;
 import org.geogebra.web.shared.components.tab.TabData;
@@ -444,6 +445,9 @@ public final class PropertiesViewW extends PropertiesView
 		ArrayList<TabData> tabs = new ArrayList<>();
 		for (PropertiesArray props : propLists) {
 			FlowPanel propertiesPanel = panelAdapter.buildPanel(props);
+			if (!showObjectProperties) {
+				propertiesPanel.add(locusSettingsButton());
+			}
 			tabs.add(new TabData(props.getRawName(), propertiesPanel));
 		}
 		int oldTab = -1;
@@ -467,6 +471,16 @@ public final class PropertiesViewW extends PropertiesView
 				}
 			});
 		}
+	}
+
+	private FlowPanel locusSettingsButton() {
+		FlowPanel row = new FlowPanel();
+		row.addStyleName("actionableButtonPanel");
+		StandardButton button = new StandardButton("Open Locus settings");
+		button.addStyleName("materialOutlinedButton");
+		button.addFastClickHandler(source -> LocusSettingsAction.open(optionType.getName()));
+		row.add(button);
+		return row;
 	}
 
 	private List<GeoElement> getShowableElements() {

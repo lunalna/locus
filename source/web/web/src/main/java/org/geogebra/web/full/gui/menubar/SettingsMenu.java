@@ -17,14 +17,18 @@
 package org.geogebra.web.full.gui.menubar;
 
 import org.geogebra.web.full.css.MaterialDesignResources;
+import org.geogebra.web.full.gui.menubar.action.LocusSettingsAction;
 import org.geogebra.web.full.main.AppWFull;
 import org.geogebra.web.html5.main.AppW;
+import org.geogebra.web.html5.main.LocalizationW;
 import org.geogebra.web.resources.SVGResource;
 
 /**
  * Single item submenu with settings action
  */
 public final class SettingsMenu extends Submenu {
+
+	private boolean shift;
 
 	/**
 	 * @param app
@@ -45,7 +49,31 @@ public final class SettingsMenu extends Submenu {
 	}
 
 	@Override
+	public String getTitle(LocalizationW localization) {
+		return shift ? "Locus settings" : super.getTitle(localization);
+	}
+
+	/**
+	 * @param shift whether shift is held while the classic settings panel is chosen
+	 */
+	void setShift(boolean shift) {
+		this.shift = shift;
+	}
+
+	@Override
 	public void handleHeaderClick() {
-		((AppWFull) getApp()).getCurrentActivity().showSettingsView(getApp());
+		open(false);
+	}
+
+	/**
+	 * Opens the classic settings panel when it is chosen and shift is not held, else the Locus settings.
+	 * @param shiftKey whether shift was held
+	 */
+	void open(boolean shiftKey) {
+		if (LocusSettingsAction.useClassic() && !shiftKey) {
+			((AppWFull) getApp()).getCurrentActivity().showSettingsView(getApp());
+		} else {
+			LocusSettingsAction.open(null);
+		}
 	}
 }

@@ -373,6 +373,11 @@ public class AppWFull extends AppW implements HasKeyboard, MenuViewListener {
 		}
 		Js.asPropertyMap(DomGlobal.window).set("locusPluginsUpdate",
 				(JsRunnable) this::updatePlugins);
+		Js.asPropertyMap(DomGlobal.window).set("locusAppSwitcherUpdate", (JsRunnable) () -> {
+			if (getToolbar() != null) {
+				getToolbar().updateAppSwitcher();
+			}
+		});
 		// the plugins may have loaded before the views were built
 		updatePlugins();
 		LocusPluginApi.register(this);
