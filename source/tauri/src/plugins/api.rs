@@ -594,6 +594,13 @@ pub async fn plugin_tool_result(
     Ok(())
 }
 
+// The background and foreground of the app theme, null for the default one.
+#[tauri::command]
+pub fn plugin_theme(app: AppHandle, webview: Webview, plugin: Option<String>) -> Result<Value, String> {
+    caller(&webview, plugin)?;
+    Ok(crate::resourcepack::base_theme(&app))
+}
+
 // The running exam: its state, lines in its log and status, and the accommodations a plugin allows.
 #[tauri::command]
 pub fn plugin_exam(

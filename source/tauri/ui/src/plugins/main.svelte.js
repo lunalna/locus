@@ -97,6 +97,7 @@ const allowed = [
     'plugin_settings',
     'plugin_file',
     'plugin_exam',
+    'plugin_theme',
     'plugin_command_update',
     'plugin_dialog',
 ];

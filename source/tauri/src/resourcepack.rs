@@ -190,6 +190,11 @@ fn theme(app: &AppHandle) -> Value {
     json!({ "colors": palette, "theme": base, "css": css })
 }
 
+// The background and foreground of the active theme, null for the default one.
+pub fn base_theme(app: &AppHandle) -> Value {
+    theme(app)["theme"].clone()
+}
+
 // Icons, English strings and URLs are needed synchronously at startup, so they are inlined.
 fn script(app: &AppHandle) -> String {
     let dir = dir(app);
@@ -390,7 +395,12 @@ pub fn library_activate(app: AppHandle, webview: Webview, kind: String, id: Opti
     save_settings(&app, &settings)?;
     branding(&app).map_err(|e| e.to_string())?;
     let theme = theme(&app);
-    session::refresh_others(&app, &webview, if matches!(kind, Kind::Theme) { &theme } else { &Value::Null });
+    if matches!(kind, Kind::Theme) {
+        session::refresh_others(&app, &webview, &theme);
+        crate::plugins::theme_changed(&app, &theme["theme"]);
+    } else {
+        session::refresh_others(&app, &webview, &Value::Null);
+    }
     Ok(theme)
 }
 

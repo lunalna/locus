@@ -413,6 +413,7 @@ pub fn run() {
             plugins::api::plugin_file,
             plugins::api::plugin_tool_result,
             plugins::api::plugin_exam,
+            plugins::api::plugin_theme,
             plugins::api::plugin_list,
             plugins::api::plugin_enable,
             #[cfg(target_os = "ios")]

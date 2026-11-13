@@ -281,7 +281,7 @@ pub fn sync(app: &AppHandle) {
         let _ = stop(app, id);
     }
     for plugin in wanted.into_iter().filter(|plugin| !started.contains(&plugin.id)) {
-        let _ = start(app, plugin);
+        start(app, plugin);
     }
     #[cfg(desktop)]
     crate::shortcuts::register(app, &shortcuts(app));
@@ -304,10 +304,16 @@ fn changed(app: &AppHandle) {
     }
 }
 
-fn start(app: &AppHandle, plugin: Plugin) -> Result<(), String> {
+fn start(app: &AppHandle, plugin: Plugin) {
     let id = plugin.id.clone();
     app.state::<Plugins>().0.lock().unwrap().running.insert(id.clone(), Instance::new(plugin.clone()));
-    window::start(app, &plugin)
+    // Windows deadlocks when a window is made inside a command, so it is made on another thread.
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if self::plugin(&app, &id).is_some() {
+            let _ = window::start(&app, &plugin);
+        }
+    });
 }
 
 fn stop(app: &AppHandle, id: &str) -> Result<(), String> {
@@ -525,6 +531,12 @@ fn emit(app: &AppHandle, id: &str, event: &Value) {
                 json!(id)
             ));
         }
+    }
+}
+
+pub fn theme_changed(app: &AppHandle, theme: &Value) {
+    for plugin in running(app) {
+        emit(app, &plugin.id, &json!({"type": "theme", "theme": theme}));
     }
 }
 
