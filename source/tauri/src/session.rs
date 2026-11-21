@@ -165,7 +165,7 @@ pub fn open(app: &AppHandle, mode: Mode) -> tauri::Result<WebviewWindow> {
     let page = format!("{}-desktop.html", mode.name());
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(page.into()));
     #[cfg(desktop)]
-    let builder = builder.inner_size(1280.0, 800.0);
+    let builder = builder.inner_size(1280.0, 800.0).title(resourcepack::product_name(app, mode));
     // set once here, since changing it later resizes the window
     #[cfg(target_os = "macos")]
     let builder = builder.title_bar_style(tauri::TitleBarStyle::Transparent);

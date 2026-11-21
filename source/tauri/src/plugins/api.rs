@@ -82,7 +82,8 @@ pub fn plugin_window(
     Ok(())
 }
 
-#[tauri::command]
+// Async, since Windows deadlocks when a webview is made on the main thread inside a command.
+#[tauri::command(async)]
 pub fn plugin_view(
     app: AppHandle,
     webview: Webview,

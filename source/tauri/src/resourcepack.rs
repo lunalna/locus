@@ -502,7 +502,7 @@ pub fn library_cancel(app: AppHandle, webview: Webview, kind: String) -> Result<
 
 // The app name with the pack's product name in place of "Locus".
 #[cfg(desktop)]
-fn product_name(app: &AppHandle, mode: session::Mode) -> String {
+pub fn product_name(app: &AppHandle, mode: session::Mode) -> String {
     let pack = dir(app).as_deref().and_then(|dir| manifest(dir, Kind::Pack)).unwrap_or(Value::Null);
     match pack["productName"].as_str() {
         Some(brand) => mode.title().replacen("Locus", brand, 1),

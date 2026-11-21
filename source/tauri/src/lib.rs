@@ -514,7 +514,7 @@ pub fn run() {
                         // The page asks to save unsaved changes, then calls window_close.
                         api.prevent_close();
                         if let Some(view) = window.app_handle().get_webview(window.label()) {
-                            let _ = view.eval("window.locusConfirmClose ? window.locusConfirmClose() : window.locusCloseWindow()");
+                            let _ = view.eval("window.locusConfirmClose ? window.locusConfirmClose() : window.__TAURI__.core.invoke('window_close')");
                         }
                     } else if session::is_main(window.label()) {
                         session::closing(window.app_handle(), window.label());
@@ -522,7 +522,12 @@ pub fn run() {
                 }
                 WindowEvent::Destroyed if session::is_main(window.label()) => {
                     plugins::unscripted(window.app_handle(), window.label());
-                    session::closed(window.app_handle(), window.label())
+                    session::closed(window.app_handle(), window.label());
+                    // Hidden plugin windows would keep the app running after its last window closed.
+                    #[cfg(all(desktop, not(target_os = "macos")))]
+                    if session::labels(window.app_handle()).is_empty() {
+                        window.app_handle().exit(0);
+                    }
                 }
                 #[cfg(all(desktop, not(target_os = "macos")))]
                 WindowEvent::Resized(_) if is_exam_window(window) => {
